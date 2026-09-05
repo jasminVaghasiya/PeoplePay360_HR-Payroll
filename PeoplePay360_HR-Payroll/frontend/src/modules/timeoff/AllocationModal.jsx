@@ -18,23 +18,30 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
   const [error, setError] = useState('');
 
   // Extract unique departments dynamically from real employee records
-  const departments = Array.from(
+  const dynamicDepts = Array.from(
     new Set(employees.map((e) => e.department).filter(Boolean))
   );
+  const fallbackDepartments = ['Engineering', 'Marketing', 'Human Resources', 'Finance & Payroll', 'Executive Management', 'General'];
+  const departments = dynamicDepts.length > 0 ? dynamicDepts : fallbackDepartments;
 
   // Sync defaults
   useEffect(() => {
-    if (employees.length > 0 && !selectedEmployeeId) {
-      setSelectedEmployeeId(employees[0].id);
+    if (employees.length > 0) {
+      if (!selectedEmployeeId || (selectedEmployeeId !== 'all' && !employees.some((e) => (e._id || e.id) === selectedEmployeeId))) {
+        setSelectedEmployeeId(employees[0]._id || employees[0].id);
+      }
     }
-    if (departments.length > 0 && !selectedDepartment) {
-      setSelectedDepartment(departments[0]);
+    if (departments.length > 0) {
+      if (!selectedDepartment || (selectedDepartment !== 'all' && !departments.includes(selectedDepartment))) {
+        setSelectedDepartment(departments[0]);
+      }
     }
-    if (types.length > 0 && !selectedTypeId) {
-      const def = types.find((t) => t.requiresAllocation && t.status === 'Active') || types[0];
-      setSelectedTypeId(def._id);
+    if (types.length > 0) {
+      if (!selectedTypeId || !types.some((t) => t._id === selectedTypeId)) {
+        setSelectedTypeId(types[0]._id);
+      }
     }
-  }, [employees, types, selectedEmployeeId, selectedDepartment, selectedTypeId]);
+  }, [employees, departments, types, isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,11 +66,18 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
     setLoading(true);
     setError('');
 
+    let finalAllocationTo = allocationTo;
+    if (allocationTo === 'employee' && selectedEmployeeId === 'all') {
+      finalAllocationTo = 'company';
+    } else if (allocationTo === 'department' && selectedDepartment === 'all') {
+      finalAllocationTo = 'company';
+    }
+
     try {
       const res = await api.post('/timeoff/allocations', {
-        allocationTo,
-        employeeId: allocationTo === 'employee' ? selectedEmployeeId : undefined,
-        department: allocationTo === 'department' ? selectedDepartment : undefined,
+        allocationTo: finalAllocationTo,
+        employeeId: finalAllocationTo === 'employee' ? selectedEmployeeId : undefined,
+        department: finalAllocationTo === 'department' ? selectedDepartment : undefined,
         timeOffTypeId: selectedTypeId,
         allocatedAmount: Number(allocatedAmount),
         startDate,
@@ -89,12 +103,16 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
   const currentType = types.find((t) => t._id === selectedTypeId);
 
   // Count employees affected
-  const affectedCount =
-    allocationTo === 'company'
-      ? employees.length
-      : allocationTo === 'department'
-      ? employees.filter((e) => e.department === selectedDepartment).length
-      : 1;
+  const isAll =
+    allocationTo === 'company' ||
+    (allocationTo === 'employee' && selectedEmployeeId === 'all') ||
+    (allocationTo === 'department' && selectedDepartment === 'all');
+
+  const affectedCount = isAll
+    ? employees.length
+    : allocationTo === 'department'
+    ? employees.filter((e) => e.department === selectedDepartment).length
+    : 1;
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -243,11 +261,17 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
                 required
               >
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} — {emp.department} ({emp.email})
-                  </option>
-                ))}
+                <option value="all">
+                  ✨ All Employees (All {employees.length} Staff Members)
+                </option>
+                {employees.map((emp) => {
+                  const empId = (emp._id || emp.id || '').toString();
+                  return (
+                    <option key={empId} value={empId}>
+                      {emp.name} — {emp.department} ({emp.email})
+                    </option>
+                  );
+                })}
               </select>
             </div>
           )}
@@ -261,11 +285,14 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
                 onChange={(e) => setSelectedDepartment(e.target.value)}
                 required
               >
+                <option value="all">
+                  ✨ All Departments ({departments.length} Departments, {employees.length} Total Employees)
+                </option>
                 {departments.map((dept) => {
                   const count = employees.filter((e) => e.department === dept).length;
                   return (
                     <option key={dept} value={dept}>
-                      {dept} ({count} active {count === 1 ? 'employee' : 'employees'})
+                      {dept} {count > 0 ? `(${count} active ${count === 1 ? 'employee' : 'employees'})` : ''}
                     </option>
                   );
                 })}
@@ -302,9 +329,12 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
               onChange={(e) => setSelectedTypeId(e.target.value)}
               required
             >
-              {types.filter(t => t.requiresAllocation).map((t) => (
+              <option value="all">
+                ✨ All Time Off Types (All {types.length} Leave Types)
+              </option>
+              {types.map((t) => (
                 <option key={t._id} value={t._id}>
-                  {t.name} ({t.code}) — {t.unit} (Max Policy: {t.maxAllocation} {t.unit})
+                  {t.name} ({t.code}) — {t.unit}{t.maxAllocation ? ` (Max Policy: ${t.maxAllocation} ${t.unit})` : ''}
                 </option>
               ))}
             </select>
@@ -419,7 +449,7 @@ export const AllocationModal = ({ isOpen, onClose, onSuccess, employees = [], ty
               Cancel
             </button>
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Processing...' : `Save & Assign (${affectedCount} ${affectedCount === 1 ? 'Employee' : 'Employees'})`}
+              {loading ? 'Processing...' : `Save & Assign (${affectedCount} ${affectedCount === 1 ? 'Employee' : 'Employees'}${selectedTypeId === 'all' ? ` × ${types.length} Types` : ''})`}
             </button>
           </div>
         </form>

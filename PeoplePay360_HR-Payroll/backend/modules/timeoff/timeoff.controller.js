@@ -215,24 +215,53 @@ const createAllocation = async (req, res) => {
       autoApprove
     } = req.body;
 
-    const type = await TimeOffType.findById(timeOffTypeId);
-    if (!type) return res.status(404).json({ success: false, message: 'Selected Time Off Type not found.' });
+    let targetTypes = [];
+    if (timeOffTypeId === 'all' || timeOffTypeId === 'ALL') {
+      targetTypes = await TimeOffType.find({ status: { $ne: 'Inactive' } });
+      if (targetTypes.length === 0) {
+        targetTypes = await TimeOffType.find({});
+      }
+    } else {
+      const type = await TimeOffType.findById(timeOffTypeId);
+      if (type) targetTypes = [type];
+    }
+
+    if (targetTypes.length === 0) {
+      return res.status(404).json({ success: false, message: 'Selected Time Off Type not found.' });
+    }
 
     let targetUsers = [];
+    let resolvedMode = allocationTo;
 
-    if (allocationTo === 'employee') {
+    if (allocationTo === 'employee' && (employeeId === 'all' || employeeId === 'ALL')) {
+      resolvedMode = 'company';
+    } else if (allocationTo === 'department' && (department === 'all' || department === 'ALL')) {
+      resolvedMode = 'company';
+    }
+
+    if (resolvedMode === 'employee') {
       if (!employeeId) return res.status(400).json({ success: false, message: 'Please select an employee.' });
       const emp = await User.findById(employeeId);
       if (!emp) return res.status(404).json({ success: false, message: 'Selected employee not found.' });
       targetUsers = [emp];
-    } else if (allocationTo === 'department') {
+    } else if (resolvedMode === 'department') {
       if (!department) return res.status(400).json({ success: false, message: 'Please select a department.' });
-      targetUsers = await User.find({ department, status: 'ACTIVE' });
+      const escapedDept = department.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      targetUsers = await User.find({
+        department: new RegExp(`^${escapedDept}$`, 'i'),
+        status: { $ne: 'INACTIVE' }
+      });
+      if (targetUsers.length === 0) {
+        targetUsers = await User.find({ department: new RegExp(`^${escapedDept}$`, 'i') });
+      }
       if (targetUsers.length === 0) {
         return res.status(404).json({ success: false, message: `No active employees found in department "${department}".` });
       }
-    } else if (allocationTo === 'company') {
-      targetUsers = await User.find({ status: 'ACTIVE' });
+    } else if (resolvedMode === 'company') {
+      targetUsers = await User.find({ status: { $ne: 'INACTIVE' } });
+      if (targetUsers.length === 0) {
+        targetUsers = await User.find({});
+      }
       if (targetUsers.length === 0) {
         return res.status(404).json({ success: false, message: 'No active employees found in the company.' });
       }
@@ -243,21 +272,22 @@ const createAllocation = async (req, res) => {
     const initialStatus = autoApprove ? 'Approved' : 'Pending Approval';
     const auditAction = autoApprove ? 'ALLOCATION_CREATED_AND_APPROVED' : 'ALLOCATION_CREATED_PENDING';
 
-    const createdAllocations = await Promise.all(
-      targetUsers.map((u) =>
-        Allocation.create({
+    const allocationsToCreate = [];
+    for (const u of targetUsers) {
+      for (const t of targetTypes) {
+        allocationsToCreate.push({
           employee: u._id,
           employeeName: u.name,
           employeeEmail: u.email,
           department: u.department || 'General',
-          timeOffType: type._id,
-          timeOffTypeName: type.name,
+          timeOffType: t._id,
+          timeOffTypeName: t.name,
           allocatedAmount: Number(allocatedAmount),
-          unit: type.unit,
+          unit: t.unit || 'Days',
           startDate: new Date(startDate),
           endDate: new Date(endDate),
-          validityPeriod: validityPeriod || type.validityPeriod || 'Annual',
-          reason: reason || `Allocated to ${allocationTo === 'company' ? 'Whole Company' : (allocationTo === 'department' ? `Department: ${department}` : u.name)} by ${req.user.name}`,
+          validityPeriod: validityPeriod || t.validityPeriod || 'Annual',
+          reason: reason || `Allocated ${t.name} to ${resolvedMode === 'company' ? 'Whole Company' : (resolvedMode === 'department' ? `Department: ${department}` : u.name)} by ${req.user.name}`,
           status: initialStatus,
           createdBy: req.user.id || req.user._id,
           createdByName: req.user.name,
@@ -271,23 +301,28 @@ const createAllocation = async (req, res) => {
               performedByName: req.user.name,
               previousStatus: 'Draft',
               newStatus: initialStatus,
-              note: `Allocated ${allocatedAmount} ${type.unit} of ${type.name} (Target: ${allocationTo.toUpperCase()})`
+              note: `Allocated ${allocatedAmount} ${t.unit} of ${t.name} (Target: ${resolvedMode.toUpperCase()})`
             }
           ]
-        })
-      )
+        });
+      }
+    }
+
+    const createdAllocations = await Promise.all(
+      allocationsToCreate.map((item) => Allocation.create(item))
     );
 
+    const typeDesc = targetTypes.length > 1 ? `all ${targetTypes.length} leave types` : `${targetTypes[0].name}`;
     const targetDesc =
-      allocationTo === 'company'
-        ? `all ${createdAllocations.length} employees across the company`
-        : allocationTo === 'department'
-        ? `${createdAllocations.length} employees in ${department}`
+      resolvedMode === 'company'
+        ? `all ${targetUsers.length} employees across the company`
+        : resolvedMode === 'department'
+        ? `${targetUsers.length} employees in ${department}`
         : targetUsers[0].name;
 
     return res.status(201).json({
       success: true,
-      message: `Successfully assigned ${allocatedAmount} ${type.unit} of ${type.name} to ${targetDesc} (Status: "${initialStatus}").`,
+      message: `Successfully assigned ${allocatedAmount} Days of ${typeDesc} to ${targetDesc} (Status: "${initialStatus}").`,
       count: createdAllocations.length,
       allocations: createdAllocations,
       allocation: createdAllocations[0]
