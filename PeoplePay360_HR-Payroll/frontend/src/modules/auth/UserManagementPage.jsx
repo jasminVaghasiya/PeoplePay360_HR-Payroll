@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CreateUserModal } from './CreateUserModal';
 import { UserAvatarHoverPreview } from '../../components/UserAvatarHoverPreview';
+import CustomDropdown from '../../components/CustomDropdown';
 import { UserPlus, Search, Shield, Filter, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 
 export const UserManagementPage = () => {
@@ -18,7 +19,7 @@ export const UserManagementPage = () => {
   const loadData = async () => {
     setLoading(true);
     const data = await fetchUsers({ search, role: roleFilter, status: statusFilter, employeeType: employeeTypeFilter });
-    if (data.users) {
+    if (data.success) {
       setUsers(data.users);
     }
     setLoading(false);
@@ -71,7 +72,7 @@ export const UserManagementPage = () => {
       </div>
 
       {/* Filter & Search Toolbar */}
-      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '280px' }}>
           <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
             <Search size={18} color="#64748B" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)' }} />
@@ -85,29 +86,48 @@ export const UserManagementPage = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: '180px' }}>
             <Filter size={16} color="var(--text-muted)" />
-            <select className="form-select" style={{ width: '180px' }} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-              <option value="">All Roles</option>
-              <option value="Admin">Admin</option>
-              <option value="HR Payroll Manager">HR Payroll Manager</option>
-              <option value="HR Payroll User">HR Payroll User</option>
-              <option value="HR Manager">HR Manager</option>
-              <option value="Employee">Employee</option>
-            </select>
+            <CustomDropdown
+              options={[
+                { value: '', label: 'All Roles' },
+                { value: 'Admin', label: 'Admin' },
+                { value: 'HR Payroll Manager', label: 'HR Payroll Manager' },
+                { value: 'HR Payroll User', label: 'HR Payroll User' },
+                { value: 'HR Manager', label: 'HR Manager' },
+                { value: 'Employee', label: 'Employee' }
+              ]}
+              value={roleFilter}
+              onChange={(val) => setRoleFilter(val)}
+              placeholder="All Roles"
+            />
           </div>
 
-          <select className="form-select" style={{ width: '160px' }} value={employeeTypeFilter} onChange={(e) => setEmployeeTypeFilter(e.target.value)}>
-            <option value="">All Employee Types</option>
-            <option value="Permanent">Permanent</option>
-            <option value="Contract">Contract</option>
-          </select>
+          <div style={{ minWidth: '160px' }}>
+            <CustomDropdown
+              options={[
+                { value: '', label: 'All Employee Types' },
+                { value: 'Permanent', label: 'Permanent' },
+                { value: 'Contract', label: 'Contract' }
+              ]}
+              value={employeeTypeFilter}
+              onChange={(val) => setEmployeeTypeFilter(val)}
+              placeholder="All Employee Types"
+            />
+          </div>
 
-          <select className="form-select" style={{ width: '150px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
+          <div style={{ minWidth: '150px' }}>
+            <CustomDropdown
+              options={[
+                { value: '', label: 'All Statuses' },
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'INACTIVE', label: 'Inactive' }
+              ]}
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val)}
+              placeholder="All Statuses"
+            />
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

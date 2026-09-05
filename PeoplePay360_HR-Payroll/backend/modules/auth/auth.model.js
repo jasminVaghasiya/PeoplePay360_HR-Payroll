@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: [4, 'Password must be at least 4 characters long'],
+      minlength: [1, 'Password is required'],
       select: false
     },
     role: {
@@ -130,6 +130,10 @@ const refreshTokenSchema = new mongoose.Schema(
       type: String,
       default: null
     },
+    rotatedAt: {
+      type: Date,
+      default: null
+    },
     ipAddress: {
       type: String,
       default: ''
@@ -149,6 +153,52 @@ refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const RefreshToken = mongoose.model('RefreshToken', refreshTokenSchema);
 
-module.exports = { User, RefreshToken, userRoles };
+const accessTokenSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    userEmail: {
+      type: String,
+      required: true,
+      lowercase: true
+    },
+    token: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true
+    },
+    expiresAt: {
+      type: Date,
+      required: true
+    },
+    revoked: {
+      type: Boolean,
+      default: false
+    },
+    ipAddress: {
+      type: String,
+      default: ''
+    },
+    userAgent: {
+      type: String,
+      default: ''
+    }
+  },
+  {
+    timestamps: true
+  }
+);
+
+// TTL index to automatically purge expired access tokens from MongoDB
+accessTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+const AccessToken = mongoose.model('AccessToken', accessTokenSchema);
+
+module.exports = { User, RefreshToken, AccessToken, userRoles };
+
 
 

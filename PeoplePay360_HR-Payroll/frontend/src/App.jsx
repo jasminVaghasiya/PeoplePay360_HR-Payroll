@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar } from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
 import { LoginPage } from './modules/auth/LoginPage';
 import { UserManagementPage } from './modules/auth/UserManagementPage';
-import { EmployeeDirectory } from './modules/employees/EmployeeDirectory';
+import { ContractManagementModule } from './modules/contracts/ContractManagementModule';
 import { AttendanceModule } from './modules/attendance/AttendanceModule';
 import { TimeOffHub } from './modules/timeoff/TimeOffHub';
 import { PayrollPlaceholder } from './modules/payroll/PayrollPlaceholder';
@@ -13,7 +14,7 @@ const MainApp = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(() => {
     if (!user) return 'users';
-    return user.role === 'Employee' ? 'employees' : 'users';
+    return user.role === 'Employee' ? 'contracts' : 'users';
   });
 
   if (!user) {
@@ -25,7 +26,7 @@ const MainApp = () => {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="main-layout">
         {activeTab === 'users' && <UserManagementPage />}
-        {activeTab === 'employees' && <EmployeeDirectory />}
+        {activeTab === 'contracts' && <ContractManagementModule />}
         {activeTab === 'attendance' && <AttendanceModule />}
         {activeTab === 'timeoff' && <TimeOffHub />}
         {activeTab === 'payroll' && <PayrollPlaceholder />}
@@ -37,8 +38,11 @@ const MainApp = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
+

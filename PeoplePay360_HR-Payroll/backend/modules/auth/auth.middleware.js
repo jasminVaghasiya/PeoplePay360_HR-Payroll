@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { User } = require('./auth.model');
 const { ROLE } = require('../access-control/models/types');
 const attachAbility = require('../access-control/middlewares/attachAbility');
+const authRepository = require('./auth.repository');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'peoplepay360_secret_jwt_key_hackathon_2026';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'peoplepay360_secret_jwt_refresh_key_hackathon_2026';
@@ -48,11 +49,25 @@ const verifyToken = async (req, res, next) => {
       });
     }
 
-    let user;
+    // Check DB access token revocation status
     try {
-      user = await User.findById(decoded.id).select('-password');
+      const storedAccessToken = await authRepository.findAccessToken(token);
+      if (storedAccessToken && storedAccessToken.revoked) {
+        return res.status(401).json({
+          success: false,
+          code: 'TOKEN_REVOKED',
+          message: 'Access token has been revoked.'
+        });
+      }
     } catch (e) {
-      // Fallback
+      // Safe fallback if database query fails transiently
+    }
+
+    let user = null;
+    try {
+      user = await authRepository.findById(decoded.id);
+    } catch (e) {
+      // Safe fallback
     }
 
     if (!user) {
