@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { BarChart3, DollarSign, Users, Clock, Calendar, AlertTriangle, TrendingUp, RefreshCw, CheckCircle, ShieldAlert } from 'lucide-react';
+import { BarChart3, DollarSign, Users, Clock, Calendar, AlertTriangle, TrendingUp, RefreshCw, CheckCircle, ShieldAlert, CreditCard } from 'lucide-react';
 import { AttendanceDashboardView } from './AttendanceDashboardView';
 import { PayrollDashboardView } from './PayrollDashboardView';
 
