@@ -112,7 +112,10 @@ const authorizeRoles = (...allowedRoles) => {
 
 // Check if user has authority to create target role
 const canCreateRole = (creatorRole, targetRole) => {
-  if (creatorRole === ROLE.ADMIN) return true;
+  if (targetRole === 'Admin' || targetRole === ROLE.ADMIN) return false;
+  if (creatorRole === ROLE.ADMIN) {
+    return [ROLE.HR_PAYROLL_MANAGER, ROLE.HR_PAYROLL_USER, ROLE.HR_MANAGER, ROLE.EMPLOYEE].includes(targetRole);
+  }
   if (creatorRole === ROLE.HR_PAYROLL_MANAGER) {
     return [ROLE.HR_PAYROLL_USER, ROLE.HR_MANAGER, ROLE.EMPLOYEE].includes(targetRole);
   }

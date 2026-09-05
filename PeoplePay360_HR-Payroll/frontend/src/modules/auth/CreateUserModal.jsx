@@ -26,8 +26,7 @@ export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
     { value: 'Employee', label: 'Employee (Self-Service portal)' },
     { value: 'HR Manager', label: 'HR Manager (Full HR, Attendance & Time Off CRUD)' },
     { value: 'HR Payroll User', label: 'HR Payroll User (HR + Payruns/Payslips Read-Write)' },
-    { value: 'HR Payroll Manager', label: 'HR Payroll Manager (Full HR & Payroll Operations)' },
-    { value: 'Admin', label: 'Admin (Full System & User Management Access)' }
+    { value: 'HR Payroll Manager', label: 'HR Payroll Manager (Full HR & Payroll Operations)' }
   ];
 
   const allowedRoles = ALL_ROLES.filter((r) => canCreateRole(r.value));

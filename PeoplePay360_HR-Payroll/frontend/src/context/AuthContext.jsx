@@ -144,11 +144,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Hierarchy check if current logged-in user can create specified role
+  // Hierarchy check if current logged-in user can create/assign specified role (NEVER Admin)
   const canCreateRole = (targetRole) => {
+    if (targetRole === 'Admin') return false;
     if (!user) return false;
     const role = user.role;
-    if (role === 'Admin') return true;
+    if (role === 'Admin') {
+      return ['HR Payroll Manager', 'HR Payroll User', 'HR Manager', 'Employee'].includes(targetRole);
+    }
     if (role === 'HR Payroll Manager') {
       return ['HR Payroll User', 'HR Manager', 'Employee'].includes(targetRole);
     }
@@ -156,6 +159,19 @@ export const AuthProvider = ({ children }) => {
       return targetRole === 'Employee';
     }
     return false;
+  };
+
+  // Update User Role
+  const updateUserRole = async (userId, newRole) => {
+    try {
+      const response = await api.patch(`/auth/users/${userId}/role`, { role: newRole });
+      return response.data;
+    } catch (err) {
+      return {
+        success: false,
+        message: err.response?.data?.message || 'Failed to update user role'
+      };
+    }
   };
 
   return (
@@ -170,7 +186,8 @@ export const AuthProvider = ({ children }) => {
         createNewUser,
         fetchUsers,
         toggleUserStatus,
-        canCreateRole
+        canCreateRole,
+        updateUserRole
       }}
     >
       <AbilityContext.Provider value={ability}>

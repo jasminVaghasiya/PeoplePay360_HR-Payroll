@@ -3,7 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Sidebar } from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
 import { LoginPage } from './modules/auth/LoginPage';
-import { UserManagementPage } from './modules/auth/UserManagementPage';
+import { UserManagementPage } from './modules/auth/UserManagementView';
 import { ContractManagementModule } from './modules/contracts/ContractManagementModule';
 import { AttendanceModule } from './modules/attendance/AttendanceModule';
 import { TimeOffHub } from './modules/timeoff/TimeOffHub';
@@ -11,10 +11,10 @@ import { PayrollHub } from './modules/payroll/PayrollHub';
 import { DashboardView } from './modules/dashboard/DashboardView';
 
 const MainApp = () => {
-  const { user } = useAuth();
+  const { user, ability } = useAuth();
   const [activeTab, setActiveTab] = useState(() => {
     if (!user) return 'users';
-    return user.role === 'Employee' ? 'contracts' : 'users';
+    return user.role === 'Employee' ? 'attendance' : 'users';
   });
 
   if (!user) {
@@ -26,7 +26,7 @@ const MainApp = () => {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="main-layout">
         {activeTab === 'users' && <UserManagementPage />}
-        {activeTab === 'contracts' && <ContractManagementModule />}
+        {activeTab === 'contracts' && ability?.can('read', 'contract') && <ContractManagementModule />}
         {activeTab === 'attendance' && <AttendanceModule />}
         {activeTab === 'timeoff' && <TimeOffHub />}
         {activeTab === 'payroll' && <PayrollHub />}

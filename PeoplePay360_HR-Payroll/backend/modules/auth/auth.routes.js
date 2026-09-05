@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { login, refreshToken, logout, createUser, getUsers, toggleUserStatus, getMe } = require('./auth.controller');
+const { login, refreshToken, logout, createUser, getUsers, toggleUserStatus, getMe, getUserById, updateUserRole } = require('./auth.controller');
 const { verifyToken, authorizeRoles } = require('./auth.middleware');
 
 const validate = require('../../validation/joiValidator');
@@ -13,6 +13,9 @@ router.post('/logout', logout);
 
 // Authenticated current user profile
 router.get('/me', verifyToken, getMe);
+
+// Get User By ID (Admin, HR Roles or Employee viewing own profile)
+router.get('/users/:id', verifyToken, getUserById);
 
 // Create User Endpoint (Higher authorities: Admin, HR Payroll Manager, HR Manager)
 router.post(
@@ -37,6 +40,14 @@ router.patch(
   verifyToken,
   authorizeRoles('Admin', 'HR Payroll Manager'),
   toggleUserStatus
+);
+
+// Update User Role Endpoint (Admin, HR Payroll Manager, HR Manager)
+router.patch(
+  '/users/:id/role',
+  verifyToken,
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager'),
+  updateUserRole
 );
 
 module.exports = router;

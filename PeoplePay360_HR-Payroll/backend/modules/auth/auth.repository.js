@@ -4,22 +4,7 @@ const { getIsConnected } = require('../../config/db');
 const bcrypt = require('bcryptjs');
 
 // In-Memory Backup Store for offline fallback
-let memoryUsers = [
-  {
-    _id: 'user_admin_001',
-    id: 'user_admin_001',
-    name: 'jemin vaghasiya',
-    email: 'jaiminvaghasiya9023@gmail.com',
-    password: bcrypt.hashSync('admin123', 10),
-    role: 'Admin',
-    department: 'Executive Management',
-    jobPosition: 'Chief System Administrator',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'System Bootstrapper',
-    createdAt: new Date().toISOString()
-  }
-];
+let memoryUsers = [];
 
 class AuthRepository {
   async findByEmail(email) {
@@ -150,6 +135,26 @@ class AuthRepository {
     const memUser = memoryUsers.find((u) => u._id === id || u.id === id);
     if (memUser) {
       memUser.status = memUser.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+      if (!updatedUser) updatedUser = memUser;
+    }
+
+    return updatedUser;
+  }
+
+  async updateRole(id, newRole) {
+    let updatedUser = null;
+    if (getIsConnected()) {
+      const u = await User.findById(id);
+      if (u) {
+        u.role = newRole;
+        await u.save();
+        updatedUser = u;
+      }
+    }
+
+    const memUser = memoryUsers.find((u) => u._id === id || u.id === id);
+    if (memUser) {
+      memUser.role = newRole;
       if (!updatedUser) updatedUser = memUser;
     }
 

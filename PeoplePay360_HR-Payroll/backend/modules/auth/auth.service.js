@@ -279,6 +279,47 @@ class AuthService {
     }
     return updatedUser;
   }
+
+  async getUserById(userId) {
+    const user = await authRepository.findById(userId);
+    if (!user) {
+      throw { statusCode: 404, message: 'User not found' };
+    }
+    return user;
+  }
+
+  async updateUserRole(creatorUser, targetUserId, newRole) {
+    if (!newRole) {
+      throw { statusCode: 400, message: 'New role is required' };
+    }
+
+    if (newRole === 'Admin' || newRole === 'admin') {
+      throw { statusCode: 403, message: 'Forbidden: Admin role cannot be assigned to any user' };
+    }
+
+    if (!userRoles.includes(newRole)) {
+      throw { statusCode: 400, message: Invalid role '' };
+    }
+
+    if (!canCreateRole(creatorUser.role, newRole)) {
+      throw {
+        statusCode: 403,
+        message: Forbidden: Your role () does not have permission to assign role ''
+      };
+    }
+
+    const targetUser = await authRepository.findById(targetUserId);
+    if (!targetUser) {
+      throw { statusCode: 404, message: 'User not found' };
+    }
+
+    if (targetUser.role === 'Admin') {
+      throw { statusCode: 403, message: 'Forbidden: System Admin role cannot be altered' };
+    }
+
+    const updatedUser = await authRepository.updateRole(targetUserId, newRole);
+    return updatedUser;
+  }
 }
 
 module.exports = new AuthService();

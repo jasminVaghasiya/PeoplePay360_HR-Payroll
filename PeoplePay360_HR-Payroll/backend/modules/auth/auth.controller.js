@@ -136,6 +136,52 @@ const getMe = async (req, res) => {
   });
 };
 
+// Update User Role Controller (Admin & Higher Authority)
+const updateUserRole = async (req, res) => {
+  try {
+    const updatedUser = await authService.updateUserRole(req.user, req.params.id, req.body.role);
+    return res.status(200).json({
+      success: true,
+      message: Role for '' updated to '' successfully,
+      user: updatedUser
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to update user role'
+    });
+  }
+};
+
+// Get Single User Details by ID (Admin/HR or self)
+const getUserById = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const isSelf = req.user.id === targetUserId || req.user._id?.toString() === targetUserId;
+    const isHRorAdmin = ['Admin', 'HR Payroll Manager', 'HR Payroll User', 'HR Manager'].includes(req.user.role);
+
+    if (!isSelf && !isHRorAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You can only view your own profile details.'
+      });
+    }
+
+    const user = await authService.getUserById(targetUserId);
+    return res.status(200).json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to fetch user details'
+    });
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
@@ -143,5 +189,7 @@ module.exports = {
   createUser,
   getUsers,
   toggleUserStatus,
-  getMe
+  getMe,
+  getUserById,
+  updateUserRole
 };

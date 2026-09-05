@@ -20,9 +20,9 @@ export const ContractModal = ({ isOpen, onClose, onSuccess, editContract = null,
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [status, setStatus] = useState('Active');
-  const [bankName, setBankName] = useState('HDFC Bank Ltd');
+  const [bankName, setBankName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
-  const [bankIFSC, setBankIFSC] = useState('HDFC0001234');
+  const [bankIFSC, setBankIFSC] = useState('');
   const [panNumber, setPanNumber] = useState('');
   const [taxId, setTaxId] = useState('');
   const [workingSchedule, setWorkingSchedule] = useState('Standard 40h/week (Mon-Fri 09:00 - 18:00)');
@@ -33,31 +33,31 @@ export const ContractModal = ({ isOpen, onClose, onSuccess, editContract = null,
     if (editContract) {
       setEmployeeId(editContract.employeeId?._id || editContract.employeeId || '');
       setContractName(editContract.contractName || '');
-      setWage(editContract.wage || 65000);
+      setWage(editContract.wage || 0);
       setWageType(editContract.wageType || 'Monthly');
       setSalaryStructureId(editContract.salaryStructureId?._id || editContract.salaryStructureId || '');
       setStartDate(editContract.startDate ? new Date(editContract.startDate).toISOString().split('T')[0] : '');
       setEndDate(editContract.endDate ? new Date(editContract.endDate).toISOString().split('T')[0] : '');
       setStatus(editContract.status || 'Active');
-      setBankName(editContract.bankName || 'HDFC Bank Ltd');
+      setBankName(editContract.bankName || '');
       setBankAccountNumber(editContract.bankAccountNumber || '');
-      setBankIFSC(editContract.bankIFSC || 'HDFC0001234');
+      setBankIFSC(editContract.bankIFSC || '');
       setPanNumber(editContract.panNumber || '');
       setTaxId(editContract.taxId || '');
       setWorkingSchedule(editContract.workingSchedule || 'Standard 40h/week (Mon-Fri 09:00 - 18:00)');
     } else {
       setEmployeeId(employees[0]?.id || employees[0]?._id || '');
       setContractName(`CON-2026-${Math.floor(100 + Math.random() * 900)}`);
-      setWage(65000);
+      setWage(50000);
       setWageType('Monthly');
       setSalaryStructureId(structures[0]?._id || '');
       setStartDate(new Date().toISOString().split('T')[0]);
       setEndDate('');
       setStatus('Active');
-      setBankName('HDFC Bank Ltd');
-      setBankAccountNumber(`50100${Math.floor(1000000 + Math.random() * 9000000)}`);
-      setBankIFSC('HDFC0001234');
-      setPanNumber(`ABCDE${Math.floor(1000 + Math.random() * 9000)}F`);
+      setBankName('');
+      setBankAccountNumber('');
+      setBankIFSC('');
+      setPanNumber('');
       setTaxId(`TX-2026-${Math.floor(1000 + Math.random() * 9000)}`);
     }
   }, [editContract, isOpen, employees, structures]);

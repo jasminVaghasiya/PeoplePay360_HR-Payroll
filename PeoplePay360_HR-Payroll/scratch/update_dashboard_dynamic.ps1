@@ -1,3 +1,7 @@
+$fileDash = "c:/Users/01/OneDrive/Desktop/prompt/PeoplePay360_HR-Payroll/frontend/src/modules/dashboard/DashboardView.jsx"
+$tmpDash = "$fileDash.tmp"
+
+$contentDash = @"
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
@@ -103,12 +107,12 @@ export const DashboardView = () => {
       if (usersWithoutContracts.length > 0) {
         warnings.push({
           type: 'warning',
-          text: `⚠️ ${usersWithoutContracts.length} active employee(s) missing assigned contracts in database.`
+          text: `⚠️ \${usersWithoutContracts.length} active employee(s) missing assigned contracts in database.`
         });
       } else {
         warnings.push({
           type: 'success',
-          text: `✓ All ${activeUsers.length} active employees have verified active contracts in database.`
+          text: `✓ All \${activeUsers.length} active employees have verified active contracts in database.`
         });
       }
 
@@ -116,7 +120,7 @@ export const DashboardView = () => {
       if (pendingCorrections.length > 0) {
         warnings.push({
           type: 'warning',
-          text: `⚠️ ${pendingCorrections.length} attendance record(s) flagged with late clock-in or pending review.`
+          text: `⚠️ \${pendingCorrections.length} attendance record(s) flagged with late clock-in or pending review.`
         });
       }
 
@@ -262,7 +266,7 @@ export const DashboardView = () => {
                           <span style={{ color: '#C084FC', fontWeight: 600 }}>₹{dept.totalWage.toLocaleString('en-IN')} / mo</span>
                         </div>
                         <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: 'var(--primary-gradient)' }} />
+                          <div style={{ width: `\${pct}%`, height: '100%', background: 'var(--primary-gradient)' }} />
                         </div>
                       </div>
                     );
@@ -280,3 +284,8 @@ export const DashboardView = () => {
     </div>
   );
 };
+"@
+
+[System.IO.File]::WriteAllText($tmpDash, $contentDash)
+Move-Item -Path $tmpDash -Destination $fileDash -Force
+Write-Host "Updated DashboardView.jsx to be 100% database driven!"
