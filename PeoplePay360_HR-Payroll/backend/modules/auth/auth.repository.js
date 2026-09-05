@@ -4,7 +4,78 @@ const { getIsConnected } = require('../../config/db');
 const bcrypt = require('bcryptjs');
 
 // In-Memory Backup Store for offline fallback
-let memoryUsers = [];
+let memoryUsers = [
+  {
+    _id: 'user_admin_001',
+    id: 'user_admin_001',
+    name: 'jemin vaghasiya',
+    email: 'jaiminvaghasiya9023@gmail.com',
+    password: bcrypt.hashSync('admin123', 10),
+    role: 'Admin',
+    department: 'Executive Management',
+    jobPosition: 'Chief System Administrator',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'System Bootstrapper',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_001',
+    id: 'user_emp_001',
+    name: 'Sarah Jenkins',
+    email: 'employee@peoplepay360.com',
+    password: bcrypt.hashSync('emp123', 10),
+    role: 'Employee',
+    department: 'Engineering',
+    jobPosition: 'Senior Full Stack Engineer',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'HR Operations',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_002',
+    id: 'user_emp_002',
+    name: 'Alex Morgan',
+    email: 'alex@peoplepay360.com',
+    password: bcrypt.hashSync('emp123', 10),
+    role: 'Employee',
+    department: 'Marketing',
+    jobPosition: 'Product Marketing Lead',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'HR Operations',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_003',
+    id: 'user_emp_003',
+    name: 'Elena Rostova',
+    email: 'hrmanager@peoplepay360.com',
+    password: bcrypt.hashSync('hr123', 10),
+    role: 'HR Manager',
+    department: 'Human Resources',
+    jobPosition: 'Principal HR Business Partner',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'Admin',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_004',
+    id: 'user_emp_004',
+    name: 'David Chen',
+    email: 'payroll@peoplepay360.com',
+    password: bcrypt.hashSync('payroll123', 10),
+    role: 'HR Payroll Manager',
+    department: 'Finance & Payroll',
+    jobPosition: 'Payroll Operations Director',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'Admin',
+    createdAt: new Date().toISOString()
+  }
+];
 
 class AuthRepository {
   async findByEmail(email) {

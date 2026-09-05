@@ -1,8 +1,139 @@
 const { Attendance, AttendanceConfig } = require('./attendance.model');
 const { getIsConnected } = require('../../config/db');
 
+const todayStr = new Date().toISOString().split('T')[0];
+
 // In-Memory Backup Store for offline fallback
-let memoryAttendances = [];
+let memoryAttendances = [
+  {
+    _id: 'att_001',
+    id: 'att_001',
+    employeeId: 'user_emp_001',
+    employeeName: 'Sarah Jenkins',
+    employeeEmail: 'employee@peoplepay360.com',
+    department: 'Engineering',
+    date: todayStr,
+    checkIn: `${todayStr}T08:52:00.000Z`,
+    checkOut: `${todayStr}T17:15:00.000Z`,
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 8.25,
+    overtimeHours: 0.25,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_002',
+    id: 'att_002',
+    employeeId: 'user_emp_002',
+    employeeName: 'Alex Morgan',
+    employeeEmail: 'alex@peoplepay360.com',
+    department: 'Marketing',
+    date: todayStr,
+    checkIn: `${todayStr}T09:18:00.000Z`,
+    checkOut: `${todayStr}T17:30:00.000Z`,
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Late',
+    workedHours: 7.8,
+    overtimeHours: 0,
+    lateMinutes: 18
+  },
+  {
+    _id: 'att_003',
+    id: 'att_003',
+    employeeId: 'user_emp_003',
+    employeeName: 'Elena Rostova',
+    employeeEmail: 'hrmanager@peoplepay360.com',
+    department: 'Human Resources',
+    date: todayStr,
+    checkIn: `${todayStr}T08:45:00.000Z`,
+    checkOut: `${todayStr}T17:00:00.000Z`,
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 8.0,
+    overtimeHours: 0,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_004',
+    id: 'att_004',
+    employeeId: 'user_emp_004',
+    employeeName: 'David Chen',
+    employeeEmail: 'payroll@peoplepay360.com',
+    department: 'Finance & Payroll',
+    date: todayStr,
+    checkIn: `${todayStr}T08:58:00.000Z`,
+    checkOut: null,
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 4.5,
+    overtimeHours: 0,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_005',
+    id: 'att_005',
+    employeeId: 'user_admin_001',
+    employeeName: 'jemin vaghasiya',
+    employeeEmail: 'jaiminvaghasiya9023@gmail.com',
+    department: 'Executive Management',
+    date: todayStr,
+    checkIn: `${todayStr}T08:30:00.000Z`,
+    checkOut: `${todayStr}T18:00:00.000Z`,
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 9.5,
+    overtimeHours: 1.5,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_006',
+    id: 'att_006',
+    employeeId: 'user_emp_001',
+    employeeName: 'Sarah Jenkins',
+    employeeEmail: 'employee@peoplepay360.com',
+    department: 'Engineering',
+    date: '2026-09-04',
+    checkIn: '2026-09-04T08:55:00.000Z',
+    checkOut: '2026-09-04T17:00:00.000Z',
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 8.0,
+    overtimeHours: 0,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_007',
+    id: 'att_007',
+    employeeId: 'user_emp_002',
+    employeeName: 'Alex Morgan',
+    employeeEmail: 'alex@peoplepay360.com',
+    department: 'Marketing',
+    date: '2026-09-04',
+    checkIn: '2026-09-04T08:50:00.000Z',
+    checkOut: '2026-09-04T17:30:00.000Z',
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Present',
+    workedHours: 8.5,
+    overtimeHours: 0.5,
+    lateMinutes: 0
+  },
+  {
+    _id: 'att_008',
+    id: 'att_008',
+    employeeId: 'user_emp_004',
+    employeeName: 'David Chen',
+    employeeEmail: 'payroll@peoplepay360.com',
+    department: 'Finance & Payroll',
+    date: '2026-09-04',
+    checkIn: '2026-09-04T09:12:00.000Z',
+    checkOut: '2026-09-04T17:00:00.000Z',
+    shiftName: 'Standard Morning (09:00 - 17:00)',
+    status: 'Late',
+    workedHours: 7.8,
+    overtimeHours: 0,
+    lateMinutes: 12
+  }
+];
 let memoryConfig = {
   standardCheckIn: '09:00',
   standardCheckOut: '18:00',
@@ -103,7 +234,13 @@ class AttendanceRepository {
           { notes: { $regex: search, $options: 'i' } }
         ];
       }
-      return await Attendance.find(query).sort({ date: -1, createdAt: -1 });
+      let dbRecords = await Attendance.find(query).sort({ date: -1, createdAt: -1 });
+      if (dbRecords.length === 0 && Object.keys(query).length === 0) {
+        try {
+          dbRecords = await Attendance.insertMany(memoryAttendances);
+        } catch (e) {}
+      }
+      return dbRecords;
     }
 
     // Memory Store Query
