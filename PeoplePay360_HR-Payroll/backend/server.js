@@ -15,6 +15,7 @@ app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/employees', require('./modules/employees/employee.routes'));
 app.use('/api/attendance', require('./modules/attendance/attendance.routes'));
 app.use('/api/timeoff', require('./modules/timeoff/timeoff.routes'));
+app.use('/api/payroll', require('./modules/payroll/payroll.routes'));
 
 // System Health Endpoint
 app.get('/api/health', (req, res) => {
@@ -48,6 +49,9 @@ const startServer = async () => {
   if (isConnected) {
     const { seedDefaultTimeOffTypes } = require('./modules/timeoff/timeoff.service');
     await seedDefaultTimeOffTypes();
+
+    const { bootstrapPayrollDefaults } = require('./modules/payroll/payroll.service');
+    await bootstrapPayrollDefaults();
   }
   app.listen(PORT, () => {
     console.log(`=======================================================`);

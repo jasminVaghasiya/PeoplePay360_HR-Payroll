@@ -6,7 +6,7 @@ import { UserManagementPage } from './modules/auth/UserManagementPage';
 import { EmployeeDirectory } from './modules/employees/EmployeeDirectory';
 import { AttendanceModule } from './modules/attendance/AttendanceModule';
 import { TimeOffHub } from './modules/timeoff/TimeOffHub';
-import { PayrollPlaceholder } from './modules/payroll/PayrollPlaceholder';
+import { PayrollHub } from './modules/payroll/PayrollHub';
 import { DashboardView } from './modules/dashboard/DashboardView';
 
 const MainApp = () => {
@@ -28,7 +28,7 @@ const MainApp = () => {
         {activeTab === 'employees' && <EmployeeDirectory />}
         {activeTab === 'attendance' && <AttendanceModule />}
         {activeTab === 'timeoff' && <TimeOffHub />}
-        {activeTab === 'payroll' && <PayrollPlaceholder />}
+        {activeTab === 'payroll' && <PayrollHub />}
         {activeTab === 'dashboard' && <DashboardView />}
       </main>
     </div>
