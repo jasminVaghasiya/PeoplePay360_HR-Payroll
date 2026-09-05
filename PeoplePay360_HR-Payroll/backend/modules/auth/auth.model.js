@@ -42,6 +42,26 @@ const userSchema = new mongoose.Schema(
       default: 'Team Member',
       trim: true
     },
+    employeeType: {
+      type: String,
+      enum: ['Permanent', 'Contract'],
+      default: 'Permanent'
+    },
+    contractStartDate: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    contractEndDate: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    contractDuration: {
+      type: String,
+      default: '',
+      trim: true
+    },
     status: {
       type: String,
       enum: ['ACTIVE', 'INACTIVE'],

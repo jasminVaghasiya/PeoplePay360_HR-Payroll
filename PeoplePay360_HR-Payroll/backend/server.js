@@ -15,6 +15,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Routes
 app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/employees', require('./modules/employees/employee.routes'));
+app.use('/api/attendance', require('./modules/attendance/attendance.routes'));
 
 // System Health Endpoint
 app.get('/api/health', (req, res) => {

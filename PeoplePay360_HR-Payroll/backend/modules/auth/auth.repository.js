@@ -1,8 +1,25 @@
 const { User, RefreshToken } = require('./auth.model');
 const { getIsConnected } = require('../../config/db');
 
+const bcrypt = require('bcryptjs');
+
 // In-Memory Backup Store for offline fallback
-let memoryUsers = [];
+let memoryUsers = [
+  {
+    _id: 'user_admin_001',
+    id: 'user_admin_001',
+    name: 'jemin vaghasiya',
+    email: 'jaiminvaghasiya9023@gmail.com',
+    password: bcrypt.hashSync('admin123', 10),
+    role: 'Admin',
+    department: 'Executive Management',
+    jobPosition: 'Chief System Administrator',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'System Bootstrapper',
+    createdAt: new Date().toISOString()
+  }
+];
 let memoryRefreshTokens = [];
 
 class AuthRepository {
@@ -23,11 +40,12 @@ class AuthRepository {
     return memoryUsers.find((u) => u._id === id || u.id === id) || null;
   }
 
-  async findAll({ search, role, status }) {
+  async findAll({ search, role, status, employeeType }) {
     if (getIsConnected()) {
       let query = {};
       if (role) query.role = role;
       if (status) query.status = status;
+      if (employeeType) query.employeeType = employeeType;
       if (search) {
         query.$or = [
           { name: { $regex: search, $options: 'i' } },
@@ -47,6 +65,10 @@ class AuthRepository {
       role: u.role,
       department: u.department,
       jobPosition: u.jobPosition,
+      employeeType: u.employeeType || 'Permanent',
+      contractStartDate: u.contractStartDate || '',
+      contractEndDate: u.contractEndDate || '',
+      contractDuration: u.contractDuration || (u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : ''),
       status: u.status,
       createdByName: u.createdByName,
       createdAt: u.createdAt
@@ -54,6 +76,7 @@ class AuthRepository {
 
     if (role) list = list.filter((u) => u.role === role);
     if (status) list = list.filter((u) => u.status === status);
+    if (employeeType) list = list.filter((u) => u.employeeType === employeeType);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -79,6 +102,10 @@ class AuthRepository {
         role: createdDbUser.role,
         department: createdDbUser.department,
         jobPosition: createdDbUser.jobPosition,
+        employeeType: createdDbUser.employeeType,
+        contractStartDate: createdDbUser.contractStartDate,
+        contractEndDate: createdDbUser.contractEndDate,
+        contractDuration: createdDbUser.contractDuration,
         status: createdDbUser.status,
         photo: createdDbUser.photo,
         createdByName: createdDbUser.createdByName,
@@ -96,6 +123,10 @@ class AuthRepository {
       role: userData.role,
       department: userData.department || 'General',
       jobPosition: userData.jobPosition || 'Employee',
+      employeeType: userData.employeeType || 'Permanent',
+      contractStartDate: userData.contractStartDate || '',
+      contractEndDate: userData.contractEndDate || '',
+      contractDuration: userData.contractDuration || '',
       status: userData.status || 'ACTIVE',
       photo: userData.photo || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80`,
       createdByName: userData.createdByName || 'System',

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { X, UserPlus, ShieldAlert, CheckCircle2, Mail, Lock, User, Building, Briefcase, Image, Upload, Link } from 'lucide-react';
+import { X, UserPlus, ShieldAlert, CheckCircle2, Mail, Lock, User, Building, Briefcase, Image, Upload, Link, Clock } from 'lucide-react';
 
 export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
   const { user: currentUser, createNewUser, canCreateRole } = useAuth();
@@ -10,6 +10,9 @@ export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
   const [role, setRole] = useState('Employee');
   const [department, setDepartment] = useState('Engineering');
   const [jobPosition, setJobPosition] = useState('Software Engineer');
+  const [employeeType, setEmployeeType] = useState('Permanent');
+  const [contractStartDate, setContractStartDate] = useState('');
+  const [contractEndDate, setContractEndDate] = useState('');
   
   // Photo input modes: 'link' or 'browse'
   const [photoMode, setPhotoMode] = useState('link');
@@ -58,6 +61,10 @@ export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
       role,
       department,
       jobPosition,
+      employeeType,
+      contractStartDate: employeeType === 'Contract' ? contractStartDate : '',
+      contractEndDate: employeeType === 'Contract' ? contractEndDate : '',
+      contractDuration: employeeType === 'Contract' && contractStartDate && contractEndDate ? `${contractStartDate} to ${contractEndDate}` : '',
       photo: finalPhoto || undefined
     };
 
@@ -71,6 +78,9 @@ export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
         onClose();
         setName('');
         setEmail('');
+        setEmployeeType('Permanent');
+        setContractStartDate('');
+        setContractEndDate('');
         setPhotoUrl('');
         setPhotoFileBase64('');
         setSuccessMsg('');
@@ -245,6 +255,46 @@ export const CreateUserModal = ({ isOpen, onClose, onUserCreated }) => {
               </div>
             </div>
           </div>
+
+          <div className="form-group" style={{ marginBottom: '1rem' }}>
+            <label className="form-label">Employee Type</label>
+            <select
+              className="form-select"
+              value={employeeType}
+              onChange={(e) => setEmployeeType(e.target.value)}
+            >
+              <option value="Permanent">Permanent</option>
+              <option value="Contract">Contract</option>
+            </select>
+          </div>
+
+          {employeeType === 'Contract' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem', background: 'rgba(245, 158, 11, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ color: '#FBBF24', fontWeight: 600 }}>Contract Start Date *</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ border: '1px solid rgba(245, 158, 11, 0.5)' }}
+                  value={contractStartDate}
+                  onChange={(e) => setContractStartDate(e.target.value)}
+                  required={employeeType === 'Contract'}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ color: '#FBBF24', fontWeight: 600 }}>Contract End Date *</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ border: '1px solid rgba(245, 158, 11, 0.5)' }}
+                  value={contractEndDate}
+                  onChange={(e) => setContractEndDate(e.target.value)}
+                  required={employeeType === 'Contract'}
+                />
+              </div>
+            </div>
+          )}
 
           {/* User Photo Options: Browse File or Image URL Link */}
           <div className="form-group" style={{ marginBottom: '1.5rem' }}>
