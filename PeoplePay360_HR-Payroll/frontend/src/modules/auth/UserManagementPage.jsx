@@ -11,12 +11,13 @@ export const UserManagementPage = () => {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [employeeTypeFilter, setEmployeeTypeFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState('list');
 
   const loadData = async () => {
     setLoading(true);
-    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter });
+    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter, employeeType: employeeTypeFilter });
     if (data.users) {
       setUsers(data.users);
     }
@@ -25,7 +26,7 @@ export const UserManagementPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [search, roleFilter, statusFilter]);
+  }, [search, roleFilter, statusFilter, employeeTypeFilter]);
 
   const handleToggleStatus = async (userId) => {
     const res = await toggleUserStatus(userId);
@@ -96,6 +97,12 @@ export const UserManagementPage = () => {
             </select>
           </div>
 
+          <select className="form-select" style={{ width: '160px' }} value={employeeTypeFilter} onChange={(e) => setEmployeeTypeFilter(e.target.value)}>
+            <option value="">All Employee Types</option>
+            <option value="Permanent">Permanent</option>
+            <option value="Contract">Contract</option>
+          </select>
+
           <select className="form-select" style={{ width: '150px' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="ACTIVE">Active</option>
@@ -152,6 +159,7 @@ export const UserManagementPage = () => {
                   <th>Photo</th>
                   <th>User Details</th>
                   <th>Role</th>
+                  <th>Type / Contract</th>
                   <th>Department & Position</th>
                   <th>Status</th>
                   <th>Created By</th>
@@ -177,6 +185,27 @@ export const UserManagementPage = () => {
                       <span className={`role-badge ${getRoleBadgeClass(u.role)}`}>
                         {u.role}
                       </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '4px',
+                          display: 'inline-block',
+                          width: 'fit-content',
+                          background: u.employeeType === 'Contract' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                          color: u.employeeType === 'Contract' ? '#FBBF24' : '#34D399'
+                        }}>
+                          {u.employeeType || 'Permanent'}
+                        </span>
+                        {u.employeeType === 'Contract' && (u.contractStartDate || u.contractDuration) && (
+                          <span style={{ fontSize: '0.7rem', color: '#FBBF24', whiteSpace: 'nowrap' }}>
+                            📅 {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : u.contractDuration}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div style={{ fontWeight: 500 }}>{u.department}</div>
@@ -232,6 +261,20 @@ export const UserManagementPage = () => {
                 </div>
               </div>
               <div style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem', marginTop: '0.8rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                  <span style={{ color: 'var(--text-dim)' }}>Type:</span>
+                  <span style={{ color: u.employeeType === 'Contract' ? '#FBBF24' : '#34D399', fontWeight: 600 }}>
+                    {u.employeeType || 'Permanent'}
+                  </span>
+                </div>
+                {u.employeeType === 'Contract' && (u.contractStartDate || u.contractDuration) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>Contract Period:</span>
+                    <span style={{ color: '#FBBF24', fontSize: '0.78rem', fontWeight: 600 }}>
+                      {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : u.contractDuration}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                   <span style={{ color: 'var(--text-dim)' }}>Dept:</span>
                   <span style={{ color: '#fff', fontWeight: 500 }}>{u.department}</span>

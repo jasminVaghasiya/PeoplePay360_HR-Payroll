@@ -9,11 +9,12 @@ export const EmployeeDirectory = () => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [employeeTypeFilter, setEmployeeTypeFilter] = useState('');
 
   useEffect(() => {
     const fetchEmps = async () => {
       try {
-        const res = await api.get('/employees', { params: { search } });
+        const res = await api.get('/employees', { params: { search, employeeType: employeeTypeFilter } });
         if (res.data.employees) {
           setEmployees(res.data.employees);
         }
@@ -24,7 +25,7 @@ export const EmployeeDirectory = () => {
       }
     };
     fetchEmps();
-  }, [search]);
+  }, [search, employeeTypeFilter]);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -40,8 +41,8 @@ export const EmployeeDirectory = () => {
         </div>
       </div>
 
-      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
-        <div style={{ position: 'relative', width: '100%', maxWidth: '400px' }}>
+      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '280px', maxWidth: '400px' }}>
           <Search size={18} color="#64748B" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)' }} />
           <input
             type="text"
@@ -52,6 +53,12 @@ export const EmployeeDirectory = () => {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
+        <select className="form-select" style={{ width: '180px' }} value={employeeTypeFilter} onChange={(e) => setEmployeeTypeFilter(e.target.value)}>
+          <option value="">All Employee Types</option>
+          <option value="Permanent">Permanent</option>
+          <option value="Contract">Contract</option>
+        </select>
       </div>
 
       {loading ? (
@@ -75,6 +82,20 @@ export const EmployeeDirectory = () => {
               </div>
 
               <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)', padding: '0.8rem', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-dim)' }}>Employee Type:</span>
+                  <span style={{ color: emp.employeeType === 'Contract' ? '#FBBF24' : '#34D399', fontWeight: 700 }}>
+                    {emp.employeeType || 'Permanent'}
+                  </span>
+                </div>
+                {emp.employeeType === 'Contract' && (emp.contractStartDate || emp.contractDuration) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>Contract Period:</span>
+                    <span style={{ color: '#FBBF24', fontWeight: 600, fontSize: '0.8rem' }}>
+                      {emp.contractStartDate && emp.contractEndDate ? `${emp.contractStartDate} to ${emp.contractEndDate}` : emp.contractDuration}
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                   <span style={{ color: 'var(--text-dim)' }}>Department:</span>
                   <span style={{ color: '#fff', fontWeight: 600 }}>{emp.department}</span>

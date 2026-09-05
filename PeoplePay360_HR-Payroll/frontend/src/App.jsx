@@ -4,7 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { LoginPage } from './modules/auth/LoginPage';
 import { UserManagementPage } from './modules/auth/UserManagementPage';
 import { EmployeeDirectory } from './modules/employees/EmployeeDirectory';
-import { AttendanceWidget } from './modules/attendance/AttendanceWidget';
+import { AttendanceModule } from './modules/attendance/AttendanceModule';
 import { TimeOffHub } from './modules/timeoff/TimeOffHub';
 import { PayrollPlaceholder } from './modules/payroll/PayrollPlaceholder';
 import { DashboardView } from './modules/dashboard/DashboardView';
@@ -26,7 +26,7 @@ const MainApp = () => {
       <main className="main-layout">
         {activeTab === 'users' && <UserManagementPage />}
         {activeTab === 'employees' && <EmployeeDirectory />}
-        {activeTab === 'attendance' && <AttendanceWidget />}
+        {activeTab === 'attendance' && <AttendanceModule />}
         {activeTab === 'timeoff' && <TimeOffHub />}
         {activeTab === 'payroll' && <PayrollPlaceholder />}
         {activeTab === 'dashboard' && <DashboardView />}

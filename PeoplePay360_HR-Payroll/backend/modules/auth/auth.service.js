@@ -171,7 +171,7 @@ class AuthService {
     return true;
   }
 
-  async createUser(creatorUser, { name, email, password, role, department, jobPosition, photo }) {
+  async createUser(creatorUser, { name, email, password, role, department, jobPosition, photo, employeeType, contractStartDate, contractEndDate, contractDuration }) {
     if (!name || !email || !password || !role) {
       throw { statusCode: 400, message: 'Name, email, password, and role are required fields' };
     }
@@ -197,6 +197,11 @@ class AuthService {
       throw { statusCode: 409, message: `A user with email '${cleanEmail}' already exists in the system` };
     }
 
+    const empType = employeeType === 'Contract' ? 'Contract' : 'Permanent';
+    const startDate = empType === 'Contract' ? (contractStartDate || '').trim() : '';
+    const endDate = empType === 'Contract' ? (contractEndDate || '').trim() : '';
+    const durationStr = startDate && endDate ? `${startDate} to ${endDate}` : (contractDuration || '').trim();
+
     const newUser = await authRepository.create({
       name: name.trim(),
       email: cleanEmail,
@@ -204,6 +209,10 @@ class AuthService {
       role,
       department: department || 'General',
       jobPosition: jobPosition || 'Employee',
+      employeeType: empType,
+      contractStartDate: startDate,
+      contractEndDate: endDate,
+      contractDuration: durationStr,
       status: 'ACTIVE',
       photo: photo || undefined,
       createdByName: creatorUser.name
