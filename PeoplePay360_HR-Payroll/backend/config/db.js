@@ -3,11 +3,9 @@ const mongoose = require('mongoose');
 let isConnected = false;
 
 const connectDB = async () => {
-  const connString = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/peoplepay360';
+  const connString = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/peoplepay360').trim();
   try {
-    const conn = await mongoose.connect(connString, {
-      serverSelectionTimeoutMS: 3000 // Fast fail if local Mongo server isn't running
-    });
+    const conn = await mongoose.connect(connString);
     isConnected = true;
     console.log(`[Database] MongoDB Connected: ${conn.connection.host}`);
     return true;
