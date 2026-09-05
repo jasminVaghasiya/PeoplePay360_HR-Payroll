@@ -18,6 +18,62 @@ let memoryUsers = [
     photo: '',
     createdByName: 'System Bootstrapper',
     createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_001',
+    id: 'user_emp_001',
+    name: 'Sarah Jenkins',
+    email: 'employee@peoplepay360.com',
+    password: bcrypt.hashSync('emp123', 10),
+    role: 'Employee',
+    department: 'Engineering',
+    jobPosition: 'Senior Full Stack Engineer',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'HR Operations',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_002',
+    id: 'user_emp_002',
+    name: 'Alex Morgan',
+    email: 'alex@peoplepay360.com',
+    password: bcrypt.hashSync('emp123', 10),
+    role: 'Employee',
+    department: 'Marketing',
+    jobPosition: 'Product Marketing Lead',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'HR Operations',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_003',
+    id: 'user_emp_003',
+    name: 'Elena Rostova',
+    email: 'hrmanager@peoplepay360.com',
+    password: bcrypt.hashSync('hr123', 10),
+    role: 'HR Manager',
+    department: 'Human Resources',
+    jobPosition: 'Principal HR Business Partner',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'Admin',
+    createdAt: new Date().toISOString()
+  },
+  {
+    _id: 'user_emp_004',
+    id: 'user_emp_004',
+    name: 'David Chen',
+    email: 'payroll@peoplepay360.com',
+    password: bcrypt.hashSync('payroll123', 10),
+    role: 'HR Payroll Manager',
+    department: 'Finance & Payroll',
+    jobPosition: 'Payroll Operations Director',
+    status: 'ACTIVE',
+    photo: '',
+    createdByName: 'Admin',
+    createdAt: new Date().toISOString()
   }
 ];
 let memoryRefreshTokens = [];
