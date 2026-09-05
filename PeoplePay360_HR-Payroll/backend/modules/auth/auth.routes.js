@@ -3,8 +3,11 @@ const router = express.Router();
 const { login, refreshToken, logout, createUser, getUsers, toggleUserStatus, getMe } = require('./auth.controller');
 const { verifyToken, authorizeRoles } = require('./auth.middleware');
 
+const validate = require('../../validation/joiValidator');
+const { loginSchema, createUserSchema } = require('../../validation/schemas/auth.schema');
+
 // Public authentication routes
-router.post('/login', login);
+router.post('/login', validate(loginSchema), login);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 
@@ -16,6 +19,7 @@ router.post(
   '/users',
   verifyToken,
   authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager'),
+  validate(createUserSchema),
   createUser
 );
 

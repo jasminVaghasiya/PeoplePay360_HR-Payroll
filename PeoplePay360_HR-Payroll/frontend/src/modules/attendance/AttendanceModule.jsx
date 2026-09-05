@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import CustomDropdown from '../../components/CustomDropdown';
 import {
   Clock,
   Play,
@@ -565,20 +566,23 @@ export const AttendanceModule = () => {
               />
             </div>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{ padding: '0.65rem 1rem', borderRadius: '8px', background: '#111726', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
-            >
-              <option value="">All Statuses</option>
-              <option value="Present">Present</option>
-              <option value="Late">Late</option>
-              <option value="Absent">Absent</option>
-              <option value="Half Day">Half Day</option>
-              <option value="Overtime">Overtime</option>
-              <option value="Missing Check-Out">Missing Check-Out</option>
-              <option value="Corrected">Corrected</option>
-            </select>
+            <div style={{ minWidth: '170px' }}>
+              <CustomDropdown
+                options={[
+                  { value: '', label: 'All Statuses' },
+                  { value: 'Present', label: 'Present' },
+                  { value: 'Late', label: 'Late' },
+                  { value: 'Absent', label: 'Absent' },
+                  { value: 'Half Day', label: 'Half Day' },
+                  { value: 'Overtime', label: 'Overtime' },
+                  { value: 'Missing Check-Out', label: 'Missing Check-Out' },
+                  { value: 'Corrected', label: 'Corrected' }
+                ]}
+                value={statusFilter}
+                onChange={(val) => setStatusFilter(val)}
+                placeholder="All Statuses"
+              />
+            </div>
 
             <input
               type="date"
@@ -597,18 +601,20 @@ export const AttendanceModule = () => {
             />
 
             {isAuthorized && (
-              <select
-                value={employeeFilter}
-                onChange={(e) => setEmployeeFilter(e.target.value)}
-                style={{ padding: '0.65rem 1rem', borderRadius: '8px', background: '#111726', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
-              >
-                <option value="">All Employees</option>
-                {employees.map((emp) => (
-                  <option key={emp.id || emp._id} value={emp.id || emp._id}>
-                    {emp.name} ({emp.department || 'General'})
-                  </option>
-                ))}
-              </select>
+              <div style={{ minWidth: '200px' }}>
+                <CustomDropdown
+                  options={[
+                    { value: '', label: 'All Employees' },
+                    ...employees.map((emp) => ({
+                      value: emp.id || emp._id,
+                      label: `${emp.name} (${emp.department || 'General'})`
+                    }))
+                  ]}
+                  value={employeeFilter}
+                  onChange={(val) => setEmployeeFilter(val)}
+                  placeholder="All Employees"
+                />
+              </div>
             )}
 
             {(search || statusFilter || deptFilter || employeeFilter || startDateFilter || endDateFilter) && (

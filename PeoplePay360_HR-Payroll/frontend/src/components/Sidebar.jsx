@@ -10,7 +10,8 @@ import {
   BarChart3, 
   LogOut, 
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 
 export const Sidebar = ({ activeTab, setActiveTab }) => {
@@ -32,7 +33,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
 
   const navItems = [
     { id: 'users', label: 'User Management', icon: UserPlus, action: 'read', subject: 'user' },
-    { id: 'employees', label: 'Employees Directory', icon: Users, action: 'read', subject: 'employee' },
+    { id: 'contracts', label: 'Contract Management', icon: FileText, action: 'read', subject: 'contract' },
     { id: 'attendance', label: 'Attendance & Schedule', icon: Clock, action: 'read', subject: 'attendance' },
     { id: 'timeoff', label: 'Time Off & Leaves', icon: Calendar, action: 'read', subject: 'timeoff' },
     { id: 'payroll', label: 'Payroll Operations', icon: DollarSign, action: 'read', subject: 'payrun' },

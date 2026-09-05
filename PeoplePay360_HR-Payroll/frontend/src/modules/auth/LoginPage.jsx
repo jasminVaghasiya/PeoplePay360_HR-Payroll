@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import FormErrorBanner from '../../components/FormErrorBanner';
+import FormFieldError from '../../components/FormFieldError';
 import { 
   ShieldCheck, 
   Mail, 
@@ -15,14 +17,22 @@ export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
+  const [errorObj, setErrorObj] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setErrorObj(null);
+    setFieldErrors({});
+
     const result = await login(email, password);
     if (!result.success) {
-      setError(result.message);
+      if (result.error) {
+        setErrorObj(result.error);
+        if (result.fields) setFieldErrors(result.fields);
+      } else {
+        setErrorObj({ message: result.message || 'Authentication failed' });
+      }
     }
   };
 
@@ -58,10 +68,8 @@ export const LoginPage = () => {
             <p className="form-subtitle">Enter your registered email address and password</p>
           </div>
 
-          {error && (
-            <div className="login-error-alert fade-in">
-              <span>{error}</span>
-            </div>
+          {errorObj && (
+            <FormErrorBanner error={errorObj} onClose={() => setErrorObj(null)} />
           )}
 
           <form onSubmit={handleSubmit} className="auth-form">
@@ -71,13 +79,17 @@ export const LoginPage = () => {
                 <Mail size={18} className="input-icon" />
                 <input
                   type="email"
-                  className="form-input custom-auth-input"
+                  className={`form-input custom-auth-input ${fieldErrors.email ? 'input-error' : ''}`}
                   placeholder="name@company.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: null }));
+                  }}
                   required
                 />
               </div>
+              <FormFieldError error={fieldErrors.email} />
             </div>
 
             <div className="form-group" style={{ marginBottom: '2rem' }}>
@@ -86,11 +98,14 @@ export const LoginPage = () => {
                 <Lock size={18} className="input-icon" />
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  className="form-input custom-auth-input"
+                  className={`form-input custom-auth-input ${fieldErrors.password ? 'input-error' : ''}`}
                   style={{ paddingRight: '2.8rem' }}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: null }));
+                  }}
                   required
                 />
                 <button
@@ -102,6 +117,7 @@ export const LoginPage = () => {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              <FormFieldError error={fieldErrors.password} />
             </div>
 
             <button

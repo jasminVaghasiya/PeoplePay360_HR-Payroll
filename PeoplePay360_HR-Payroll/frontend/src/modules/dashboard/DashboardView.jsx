@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { BarChart3, DollarSign, Users, Clock, Calendar, AlertTriangle, TrendingUp } from 'lucide-react';
+import { BarChart3, DollarSign, Users, Clock, Calendar, AlertTriangle, TrendingUp, CreditCard } from 'lucide-react';
 import { AttendanceDashboardView } from './AttendanceDashboardView';
+import { PayrollDashboardView } from './PayrollDashboardView';
 
 export const DashboardView = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('attendance'); // 'executive' | 'attendance'
+  const [activeTab, setActiveTab] = useState('attendance'); // 'executive' | 'attendance' | 'payroll'
 
   // Dynamic Executive Stats States
   const [employees, setEmployees] = useState([]);
@@ -64,19 +65,19 @@ export const DashboardView = () => {
             Analytics Dashboard
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.2rem' }}>
-            Aggregated real-time metrics dynamically loaded from database
+            Aggregated real-time metrics across Executive Overview, Attendance Health, and Payroll Batches
           </p>
         </div>
 
-        {/* Sub-Tab Navigation Bar */}
-        <div style={{ display: 'flex', background: 'rgba(15, 21, 38, 0.9)', padding: '0.35rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backdropFilter: 'blur(10px)' }}>
+        {/* Sub-Tab Navigation Bar with 3 Switch Buttons */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', background: 'rgba(15, 21, 38, 0.9)', padding: '0.35rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backdropFilter: 'blur(10px)' }}>
           <button
             onClick={() => setActiveTab('executive')}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              padding: '0.6rem 1.25rem',
+              padding: '0.6rem 1.15rem',
               borderRadius: 'var(--radius-sm)',
               fontSize: '0.88rem',
               fontWeight: 600,
@@ -98,7 +99,7 @@ export const DashboardView = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              padding: '0.6rem 1.25rem',
+              padding: '0.6rem 1.15rem',
               borderRadius: 'var(--radius-sm)',
               fontSize: '0.88rem',
               fontWeight: 600,
@@ -113,16 +114,38 @@ export const DashboardView = () => {
             <Clock size={16} />
             Attendance Dashboard
           </button>
+
+          <button
+            onClick={() => setActiveTab('payroll')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.6rem 1.15rem',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              background: activeTab === 'payroll' ? 'var(--primary-gradient)' : 'transparent',
+              color: activeTab === 'payroll' ? '#fff' : 'var(--text-muted)',
+              boxShadow: activeTab === 'payroll' ? 'var(--shadow-glow)' : 'none'
+            }}
+          >
+            <DollarSign size={16} />
+            Payroll Dashboard
+          </button>
         </div>
       </div>
 
       {/* Render Selected View */}
-      {activeTab === 'attendance' ? (
-        <AttendanceDashboardView />
-      ) : (
+      {activeTab === 'attendance' && <AttendanceDashboardView />}
+      {activeTab === 'payroll' && <PayrollDashboardView />}
+      {activeTab === 'executive' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           
-          {/* Executive KPI Stat Cards - Dynamically Populated */}
+          {/* Executive KPI Stat Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
             <div className="glass-panel" style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>

@@ -4,8 +4,11 @@ const authRepository = require('./auth.repository');
 const { userRoles } = require('./auth.model');
 const { canCreateRole, JWT_SECRET, JWT_REFRESH_SECRET } = require('./auth.middleware');
 
+const crypto = require('crypto');
+
 // Token Lifecycles (Industry Standard)
 const ACCESS_TOKEN_EXPIRY = '15m'; // 15 minutes
+const ACCESS_TOKEN_EXPIRY_MS = 15 * 60 * 1000;
 const REFRESH_TOKEN_EXPIRY_DAYS = 7; // 7 days
 
 class AuthService {
@@ -16,7 +19,8 @@ class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
-        department: user.department
+        department: user.department,
+        jti: crypto.randomUUID()
       },
       JWT_SECRET,
       { expiresIn: ACCESS_TOKEN_EXPIRY }
@@ -28,7 +32,7 @@ class AuthService {
       {
         id: user._id || user.id,
         email: user.email,
-        jti: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+        jti: crypto.randomUUID()
       },
       JWT_REFRESH_SECRET,
       { expiresIn: `${REFRESH_TOKEN_EXPIRY_DAYS}d` }
@@ -66,16 +70,27 @@ class AuthService {
     const accessToken = this.generateAccessToken(user);
     const refreshToken = this.generateRefreshToken(user);
 
-    // Calculate expiry date (7 days from now)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+    // Calculate expiry dates
+    const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_EXPIRY_MS);
+    const refreshExpiresAt = new Date();
+    refreshExpiresAt.setDate(refreshExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
 
-    // Save refresh token record in Database & memory store
+    // Save Access Token & Refresh Token in Database
+    await authRepository.saveAccessToken({
+      userId: user._id || user.id,
+      userEmail: user.email,
+      token: accessToken,
+      expiresAt: accessExpiresAt,
+      revoked: false,
+      ipAddress,
+      userAgent
+    });
+
     await authRepository.saveRefreshToken({
       userId: user._id || user.id,
       userEmail: user.email,
       token: refreshToken,
-      expiresAt,
+      expiresAt: refreshExpiresAt,
       revoked: false,
       ipAddress,
       userAgent
@@ -121,8 +136,27 @@ class AuthService {
 
     // 3. Check if token is revoked or expired
     if (storedToken.revoked) {
-      // Possible token reuse attack! Revoke all tokens for user safety
+      // Concurrency Grace Period (3s): If token was recently rotated, return existing replacement pair gracefully
+      const rotatedTime = storedToken.rotatedAt ? new Date(storedToken.rotatedAt).getTime() : 0;
+      const isWithinGracePeriod = rotatedTime > 0 && Date.now() - rotatedTime < 3000;
+
+      if (isWithinGracePeriod && storedToken.replacedByToken) {
+        const replacementRefreshToken = await authRepository.findRefreshToken(storedToken.replacedByToken);
+        if (replacementRefreshToken) {
+          const user = await authRepository.findById(decoded.id);
+          if (user && user.status !== 'INACTIVE') {
+            const activeAccessToken = this.generateAccessToken(user);
+            return {
+              accessToken: activeAccessToken,
+              refreshToken: replacementRefreshToken.token
+            };
+          }
+        }
+      }
+
+      // Security alert: Genuine reuse attack outside grace period
       await authRepository.revokeAllUserRefreshTokens(storedToken.userId);
+      await authRepository.revokeAllUserAccessTokens(storedToken.userId);
       throw { statusCode: 403, message: 'Security alert: Invalid refresh token attempt. Please log in again.' };
     }
 
@@ -137,22 +171,32 @@ class AuthService {
     }
 
     // 5. Industry-Standard Refresh Token Rotation (RTR)
-    // Generate new Access Token & NEW Refresh Token
     const newAccessToken = this.generateAccessToken(user);
     const newRefreshToken = this.generateRefreshToken(user);
 
     // Revoke old refresh token & store replacedBy reference
     await authRepository.revokeRefreshToken(oldRefreshToken, newRefreshToken);
 
-    // Save new refresh token in DB
-    const newExpiresAt = new Date();
-    newExpiresAt.setDate(newExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+    // Save new Access Token & Refresh Token in DB
+    const newAccessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_EXPIRY_MS);
+    const newRefreshExpiresAt = new Date();
+    newRefreshExpiresAt.setDate(newRefreshExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+
+    await authRepository.saveAccessToken({
+      userId: user._id || user.id,
+      userEmail: user.email,
+      token: newAccessToken,
+      expiresAt: newAccessExpiresAt,
+      revoked: false,
+      ipAddress,
+      userAgent
+    });
 
     await authRepository.saveRefreshToken({
       userId: user._id || user.id,
       userEmail: user.email,
       token: newRefreshToken,
-      expiresAt: newExpiresAt,
+      expiresAt: newRefreshExpiresAt,
       revoked: false,
       ipAddress,
       userAgent
@@ -164,9 +208,12 @@ class AuthService {
     };
   }
 
-  async logout({ refreshToken }) {
+  async logout({ refreshToken, accessToken }) {
     if (refreshToken) {
       await authRepository.revokeRefreshToken(refreshToken);
+    }
+    if (accessToken) {
+      await authRepository.revokeAccessToken(accessToken);
     }
     return true;
   }
@@ -176,8 +223,8 @@ class AuthService {
       throw { statusCode: 400, message: 'Name, email, password, and role are required fields' };
     }
 
-    if (password.length < 4) {
-      throw { statusCode: 400, message: 'Password must be at least 4 characters long' };
+    if (!password || password.length < 1) {
+      throw { statusCode: 400, message: 'Password is required' };
     }
 
     if (!userRoles.includes(role)) {

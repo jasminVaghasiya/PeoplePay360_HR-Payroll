@@ -1,4 +1,4 @@
-const { User, RefreshToken } = require('./auth.model');
+const { User, RefreshToken, AccessToken } = require('./auth.model');
 const { getIsConnected } = require('../../config/db');
 
 const bcrypt = require('bcryptjs');
@@ -76,7 +76,6 @@ let memoryUsers = [
     createdAt: new Date().toISOString()
   }
 ];
-let memoryRefreshTokens = [];
 
 class AuthRepository {
   async findByEmail(email) {
@@ -213,42 +212,38 @@ class AuthRepository {
     return updatedUser;
   }
 
-  // --- REFRESH TOKEN OPERATIONS ---
+  // --- REFRESH TOKEN OPERATIONS (PURE DATABASE) ---
   async saveRefreshToken(tokenData) {
-    if (getIsConnected()) {
-      await RefreshToken.create(tokenData);
-    }
-    memoryRefreshTokens.push(tokenData);
+    return await RefreshToken.create(tokenData);
   }
 
   async findRefreshToken(token) {
-    if (getIsConnected()) {
-      const dbToken = await RefreshToken.findOne({ token });
-      if (dbToken) return dbToken;
-    }
-    return memoryRefreshTokens.find((t) => t.token === token) || null;
+    return await RefreshToken.findOne({ token });
   }
 
   async revokeRefreshToken(token, replacedByToken = null) {
-    if (getIsConnected()) {
-      await RefreshToken.updateOne({ token }, { revoked: true, replacedByToken });
-    }
-    const mem = memoryRefreshTokens.find((t) => t.token === token);
-    if (mem) {
-      mem.revoked = true;
-      mem.replacedByToken = replacedByToken;
-    }
+    return await RefreshToken.updateOne({ token }, { revoked: true, replacedByToken, rotatedAt: new Date() });
   }
 
   async revokeAllUserRefreshTokens(userId) {
-    if (getIsConnected()) {
-      await RefreshToken.updateMany({ userId }, { revoked: true });
-    }
-    memoryRefreshTokens.forEach((t) => {
-      if (t.userId.toString() === userId.toString()) {
-        t.revoked = true;
-      }
-    });
+    return await RefreshToken.updateMany({ userId }, { revoked: true });
+  }
+
+  // --- ACCESS TOKEN OPERATIONS (PURE DATABASE) ---
+  async saveAccessToken(tokenData) {
+    return await AccessToken.create(tokenData);
+  }
+
+  async findAccessToken(token) {
+    return await AccessToken.findOne({ token });
+  }
+
+  async revokeAccessToken(token) {
+    return await AccessToken.updateOne({ token }, { revoked: true });
+  }
+
+  async revokeAllUserAccessTokens(userId) {
+    return await AccessToken.updateMany({ userId }, { revoked: true });
   }
 }
 

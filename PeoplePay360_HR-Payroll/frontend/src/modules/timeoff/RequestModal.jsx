@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import CustomDropdown from '../../components/CustomDropdown';
 import { X, Calendar, AlertTriangle, CheckCircle2, Clock, FileText, Info } from 'lucide-react';
 
 export const RequestModal = ({ isOpen, onClose, onSuccess, employees = [], types = [] }) => {
@@ -174,43 +175,37 @@ export const RequestModal = ({ isOpen, onClose, onSuccess, employees = [], types
         </div>
 
         <form onSubmit={(e) => handleSubmit(e, false)}>
-          {/* If HR, allow selecting employee */}
-          {isHR && (
+          {/* Target Employee (For HR Manager / Admin creating on behalf) */}
+          {isHR && employees.length > 0 && (
             <div className="form-group" style={{ marginBottom: '1.2rem' }}>
               <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>Target Employee *</span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>HR Override Authorized</span>
               </label>
-              <select
-                className="form-select"
+              <CustomDropdown
+                options={employees.map((emp) => ({
+                  value: emp.id || emp._id,
+                  label: `${emp.name} (${emp.department || 'General'} — ${emp.role || 'Employee'})`
+                }))}
                 value={selectedEmployeeId}
-                onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                required
-              >
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} ({emp.department} — {emp.role})
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setSelectedEmployeeId(val)}
+                placeholder="Select Employee..."
+              />
             </div>
           )}
 
           {/* Time Off Type Selection */}
           <div className="form-group" style={{ marginBottom: '1.2rem' }}>
             <label className="form-label">Leave Policy / Time Off Type *</label>
-            <select
-              className="form-select"
+            <CustomDropdown
+              options={types.filter(t => t.status === 'Active').map((t) => ({
+                value: t._id,
+                label: `${t.name} (${t.code}) — ${t.unit} ${t.requiresAllocation ? '• Allocation Required' : '• Open Entitlement'}`
+              }))}
               value={selectedTypeId}
-              onChange={(e) => setSelectedTypeId(e.target.value)}
-              required
-            >
-              {types.filter(t => t.status === 'Active').map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.name} ({t.code}) — {t.unit} {t.requiresAllocation ? '• Allocation Required' : '• Open Entitlement'}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setSelectedTypeId(val)}
+              placeholder="Select Leave Policy..."
+            />
           </div>
 
           {/* Realtime Balance Preview Card */}
