@@ -108,8 +108,6 @@ const contractSchema = new mongoose.Schema(
 );
 
 contractSchema.index({ employeeId: 1, status: 1 });
-contractSchema.index({ startDate: 1, endDate: 1 });
-
-const Contract = mongoose.model('Contract', contractSchema);
+const Contract = mongoose.models.Contract || mongoose.model('Contract', contractSchema);
 
 module.exports = { Contract };
