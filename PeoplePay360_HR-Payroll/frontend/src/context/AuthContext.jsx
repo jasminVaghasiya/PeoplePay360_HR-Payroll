@@ -86,8 +86,9 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       setLoading(false);
-      const msg = err.response?.data?.message || 'Failed to authenticate';
-      return { success: false, message: msg };
+      const errObj = err.response?.data?.error;
+      const msg = errObj?.message || err.response?.data?.message || 'Failed to authenticate';
+      return { success: false, message: msg, error: errObj, fields: errObj?.fields || null };
     }
   };
 
@@ -117,8 +118,9 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: response.data.user, message: response.data.message };
       }
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to create user';
-      return { success: false, message: msg };
+      const errObj = err.response?.data?.error;
+      const msg = errObj?.message || err.response?.data?.message || 'Failed to create user';
+      return { success: false, message: msg, error: errObj, fields: errObj?.fields || null };
     }
   };
 

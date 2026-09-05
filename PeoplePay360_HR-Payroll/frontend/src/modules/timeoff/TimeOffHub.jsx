@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
+import CustomDropdown from '../../components/CustomDropdown';
 import {
   Calendar,
   Plus,
@@ -647,31 +648,33 @@ export const TimeOffHub = () => {
                 />
               </div>
 
-              <select
-                className="form-select"
-                style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All Statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Refused">Refused</option>
-                <option value="Cancelled">Cancelled</option>
-                <option value="Draft">Draft</option>
-              </select>
+              <div style={{ minWidth: '160px' }}>
+                <CustomDropdown
+                  options={[
+                    { value: '', label: 'All Statuses' },
+                    { value: 'Pending', label: 'Pending' },
+                    { value: 'Approved', label: 'Approved' },
+                    { value: 'Refused', label: 'Refused' },
+                    { value: 'Cancelled', label: 'Cancelled' },
+                    { value: 'Draft', label: 'Draft' }
+                  ]}
+                  value={statusFilter}
+                  onChange={(val) => setStatusFilter(val)}
+                  placeholder="All Statuses"
+                />
+              </div>
 
-              <select
-                className="form-select"
-                style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
-                <option value="">All Leave Types</option>
-                {types.map((t) => (
-                  <option key={t._id} value={t._id}>{t.name}</option>
-                ))}
-              </select>
+              <div style={{ minWidth: '170px' }}>
+                <CustomDropdown
+                  options={[
+                    { value: '', label: 'All Leave Types' },
+                    ...types.map((t) => ({ value: t._id, label: t.name }))
+                  ]}
+                  value={typeFilter}
+                  onChange={(val) => setTypeFilter(val)}
+                  placeholder="All Leave Types"
+                />
+              </div>
             </div>
 
             <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
@@ -796,17 +799,19 @@ export const TimeOffHub = () => {
                 />
               </div>
 
-              <select
-                className="form-select"
-                style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="">All Statuses</option>
-                <option value="Approved">Approved</option>
-                <option value="Pending Approval">Pending Approval</option>
-                <option value="Refused">Refused</option>
-              </select>
+              <div style={{ minWidth: '170px' }}>
+                <CustomDropdown
+                  options={[
+                    { value: '', label: 'All Statuses' },
+                    { value: 'Approved', label: 'Approved' },
+                    { value: 'Pending Approval', label: 'Pending Approval' },
+                    { value: 'Refused', label: 'Refused' }
+                  ]}
+                  value={statusFilter}
+                  onChange={(val) => setStatusFilter(val)}
+                  placeholder="All Statuses"
+                />
+              </div>
             </div>
 
             {isHR && (

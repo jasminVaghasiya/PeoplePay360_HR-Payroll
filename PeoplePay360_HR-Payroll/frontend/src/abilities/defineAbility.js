@@ -10,11 +10,11 @@ export const defineAbilityFor = (user) => {
   switch (user.role) {
     case 'Admin':
       can('manage', 'all');
+      cannot('read', 'employee');
       break;
 
     case 'HR Payroll Manager':
       can('manage', [
-        'employee',
         'contract',
         'schedule',
         'attendance',
@@ -30,7 +30,6 @@ export const defineAbilityFor = (user) => {
 
     case 'HR Payroll User':
       can('manage', [
-        'employee',
         'contract',
         'schedule',
         'attendance',
@@ -43,7 +42,6 @@ export const defineAbilityFor = (user) => {
 
     case 'HR Manager':
       can('manage', [
-        'employee',
         'contract',
         'schedule',
         'attendance',
@@ -58,12 +56,11 @@ export const defineAbilityFor = (user) => {
       break;
 
     case 'Employee':
-      can('read', ['employee', 'schedule', 'payslip']);
+      can('read', ['schedule', 'payslip', 'contract']);
       can(['create', 'read'], ['attendance', 'timeoff']);
       break;
 
     default:
-      can('read', 'employee');
       break;
   }
 
