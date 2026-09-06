@@ -19,8 +19,12 @@ app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/employees', require('./modules/employees/employee.routes'));
 app.use('/api/attendance', require('./modules/attendance/attendance.routes'));
 app.use('/api/timeoff', require('./modules/timeoff/timeoff.routes'));
+app.use('/api/payroll/structures', require('./modules/payroll/payroll.routes'));
 app.use('/api/payroll', require('./modules/payroll/payroll.routes'));
+app.use('/api/structures', require('./modules/payroll/payroll.routes'));
 app.use('/api/contracts', require('./modules/contracts/contract.routes'));
+app.use('/api/settings', require('./modules/settings/settings.routes'));
+app.use('/api/departments', require('./modules/settings/settings.routes'));
 
 // System Health Endpoint
 app.get('/api/health', (req, res) => {

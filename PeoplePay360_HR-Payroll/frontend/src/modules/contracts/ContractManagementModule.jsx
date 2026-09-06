@@ -14,14 +14,16 @@ import {
   Clock, 
   AlertCircle, 
   Edit2, 
-  Trash2, 
   RefreshCw, 
   DollarSign, 
   Building, 
   Calendar,
   Eye,
-  ShieldCheck
+  ShieldCheck,
+  MoreVertical,
+  XCircle
 } from 'lucide-react';
+import { StatusToggleSwitch } from '../../components/StatusToggleSwitch';
 
 export const ContractManagementModule = () => {
   const { user } = useAuth();
@@ -33,6 +35,7 @@ export const ContractManagementModule = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+  const [departmentsList, setDepartmentsList] = useState([]);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -42,6 +45,70 @@ export const ContractManagementModule = () => {
   // Employee Details Modal State
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [selectedContractForDetails, setSelectedContractForDetails] = useState(null);
+
+  // Dropdown action menu state
+  const [activeDropdownContractId, setActiveDropdownContractId] = useState(null);
+
+  useEffect(() => {
+    const handleOutsideClick = () => setActiveDropdownContractId(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const loadDepartments = async (contractsData = []) => {
+    const deptSet = new Set();
+    try {
+      const res = await api.get('/settings/departments');
+      const list = Array.isArray(res.data?.data)
+        ? res.data.data
+        : Array.isArray(res.data?.departments)
+        ? res.data.departments
+        : Array.isArray(res.data)
+        ? res.data
+        : [];
+
+      list.forEach((d) => {
+        const name = typeof d === 'string' ? d : d.name;
+        if (name && name.trim()) deptSet.add(name.trim());
+      });
+
+      if (list.length > 0) {
+        localStorage.setItem('peoplepay360_departments', JSON.stringify(list));
+      }
+    } catch (err) {
+      console.warn('[ContractManagement] Could not fetch departments from DB, using cache:', err.message);
+      const cached = localStorage.getItem('peoplepay360_departments');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((d) => {
+              const name = typeof d === 'string' ? d : d.name;
+              if (name && name.trim()) deptSet.add(name.trim());
+            });
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Also include any department values present in loaded contracts
+    (contractsData || []).forEach((c) => {
+      if (c.department && c.department.trim()) {
+        deptSet.add(c.department.trim());
+      }
+    });
+
+    if (deptSet.size > 0) {
+      setDepartmentsList((prev) => {
+        const merged = new Set([...prev, ...deptSet]);
+        return Array.from(merged).sort((a, b) => a.localeCompare(b));
+      });
+    }
+  };
+
+  useEffect(() => {
+    loadDepartments();
+  }, []);
 
   const loadContracts = async () => {
     setLoading(true);
@@ -54,6 +121,7 @@ export const ContractManagementModule = () => {
       const res = await api.get('/contracts', { params });
       if (res.data.contracts) {
         setContracts(res.data.contracts);
+        loadDepartments(res.data.contracts);
       }
     } catch (err) {
       console.error('[Load Contracts Error]', err);
@@ -76,14 +144,15 @@ export const ContractManagementModule = () => {
     }
   };
 
-  const handleDeleteContract = async (contractId, ref) => {
+  const handleToggleContractStatus = async (contractId, currentStatus) => {
     if (!isHRAdmin) return;
-    if (!window.confirm(`Are you sure you want to delete contract record '${ref}'?`)) return;
+    const isRunning = ['running', 'active'].includes((currentStatus || '').toLowerCase());
+    const targetStatus = isRunning ? 'EXPIRED' : 'RUNNING';
     try {
-      await api.delete(`/contracts/${contractId}`);
+      await api.put(`/contracts/${contractId}/status`, { status: targetStatus });
       await loadContracts();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete contract');
+      alert(err.response?.data?.message || 'Failed to update contract status');
     }
   };
 
@@ -109,14 +178,23 @@ export const ContractManagementModule = () => {
     return map;
   }, [contracts]);
 
+  // Only include Contract-based employees in Contract Management module
+  const contractEmployeesOnly = React.useMemo(() => {
+    return contracts.filter((c) => {
+      const type = (c.employeeType || '').trim().toLowerCase();
+      if (type === 'permanent') return false;
+      return type === 'contract' || Boolean(c.endDate || c.contractDuration);
+    });
+  }, [contracts]);
+
   // Deduplicate contracts for main directory list table (show 1 consolidated row per unique employee)
   const displayContracts = React.useMemo(() => {
-    let list = contracts;
+    let list = contractEmployeesOnly;
     if (!isHRAdmin && user) {
       const uEmail = (user.email || '').toLowerCase().trim();
       const uName = (user.name || '').toLowerCase().trim();
       const uId = String(user.id || user._id || '');
-      list = contracts.filter(
+      list = contractEmployeesOnly.filter(
         (c) =>
           (c.employeeEmail && c.employeeEmail.toLowerCase().trim() === uEmail) ||
           (c.employeeId && String(c.employeeId) === uId) ||
@@ -124,9 +202,16 @@ export const ContractManagementModule = () => {
       );
     }
 
+    if (deptFilter) {
+      const targetDept = deptFilter.trim().toLowerCase();
+      list = list.filter((c) => (c.department || '').trim().toLowerCase() === targetDept);
+    }
+
     if (statusFilter) {
       return list;
     }
+
+    const isRunningStatus = (s) => ['running', 'active'].includes((s || '').toLowerCase());
 
     const employeeMap = new Map();
     list.forEach((c) => {
@@ -135,87 +220,102 @@ export const ContractManagementModule = () => {
         employeeMap.set(key, c);
       } else {
         const existing = employeeMap.get(key);
-        if (existing.status !== 'RUNNING' && c.status === 'RUNNING') {
+        if (!isRunningStatus(existing.status) && isRunningStatus(c.status)) {
           employeeMap.set(key, c);
         }
       }
     });
 
     return Array.from(employeeMap.values());
-  }, [contracts, statusFilter, isHRAdmin, user]);
+  }, [contractEmployeesOnly, statusFilter, deptFilter, isHRAdmin, user]);
 
-  // Metrics computation
-  const activeCount = contracts.filter((c) => c.status === 'RUNNING').length;
-  const draftCount = contracts.filter((c) => c.status === 'DRAFT').length;
-  const expiredCount = contracts.filter((c) => c.status === 'EXPIRED').length;
-  const totalWageCommitment = contracts
-    .filter((c) => c.status === 'RUNNING')
+  const isRunningStatus = (s) => ['running', 'active'].includes((s || '').toLowerCase());
+  const isDraftStatus = (s) => ['draft', 'new'].includes((s || '').toLowerCase());
+  const isExpiredStatus = (s) => ['expired', 'terminated', 'cancelled', 'closed'].includes((s || '').toLowerCase());
+
+  // Metrics computation strictly for contract employees
+  const activeCount = contractEmployeesOnly.filter((c) => isRunningStatus(c.status)).length;
+  const draftCount = contractEmployeesOnly.filter((c) => isDraftStatus(c.status)).length;
+  const expiredCount = contractEmployeesOnly.filter((c) => isExpiredStatus(c.status)).length;
+  const totalWageCommitment = contractEmployeesOnly
+    .filter((c) => isRunningStatus(c.status))
     .reduce((acc, c) => acc + (Number(c.wage) || 0), 0);
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'RUNNING':
-        return (
-          <span style={{
-            background: 'rgba(16, 185, 129, 0.2)',
-            color: '#34D399',
-            border: '1px solid rgba(16, 185, 129, 0.45)',
-            padding: '0.25rem 0.65rem',
-            borderRadius: '6px',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-            boxShadow: '0 0 8px rgba(16, 185, 129, 0.2)'
-          }}>
-            <CheckCircle2 size={12} />
-            Running
-          </span>
-        );
-      case 'DRAFT':
-        return (
-          <span style={{
-            background: 'rgba(245, 158, 11, 0.2)',
-            color: '#FBBF24',
-            border: '1px solid rgba(245, 158, 11, 0.45)',
-            padding: '0.25rem 0.65rem',
-            borderRadius: '6px',
-            fontSize: '0.78rem',
-            fontWeight: 700,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem'
-          }}>
-            <Clock size={12} />
-            Draft
-          </span>
-        );
-      case 'EXPIRED':
-        return (
-          <span style={{
-            background: 'rgba(148, 163, 184, 0.15)',
-            color: '#94A3B8',
-            border: '1px solid rgba(148, 163, 184, 0.3)',
-            padding: '0.25rem 0.65rem',
-            borderRadius: '6px',
-            fontSize: '0.78rem',
-            fontWeight: 600,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem'
-          }}>
-            <AlertCircle size={12} />
-            EXPIRED
-          </span>
-        );
-      default:
-        return (
-          <span style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.78rem' }}>
-            {status}
-          </span>
-        );
+  const formatDateDisplay = (d) => {
+    if (!d) return '';
+    try {
+      const s = typeof d === 'string' ? d.split('T')[0] : new Date(d).toISOString().split('T')[0];
+      return s;
+    } catch {
+      return String(d);
     }
+  };
+
+  const getStatusBadge = (status) => {
+    const s = (status || '').toUpperCase();
+    if (s === 'RUNNING' || s === 'ACTIVE') {
+      return (
+        <span style={{
+          background: 'rgba(16, 185, 129, 0.2)',
+          color: '#34D399',
+          border: '1px solid rgba(16, 185, 129, 0.45)',
+          padding: '0.25rem 0.65rem',
+          borderRadius: '6px',
+          fontSize: '0.78rem',
+          fontWeight: 700,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+          boxShadow: '0 0 8px rgba(16, 185, 129, 0.2)'
+        }}>
+          <CheckCircle2 size={12} />
+          Active
+        </span>
+      );
+    }
+    if (s === 'DRAFT' || s === 'NEW') {
+      return (
+        <span style={{
+          background: 'rgba(245, 158, 11, 0.2)',
+          color: '#FBBF24',
+          border: '1px solid rgba(245, 158, 11, 0.45)',
+          padding: '0.25rem 0.65rem',
+          borderRadius: '6px',
+          fontSize: '0.78rem',
+          fontWeight: 700,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem'
+        }}>
+          <Clock size={12} />
+          Draft
+        </span>
+      );
+    }
+    if (s === 'EXPIRED' || s === 'TERMINATED' || s === 'CANCELLED') {
+      return (
+        <span style={{
+          background: 'rgba(148, 163, 184, 0.15)',
+          color: '#94A3B8',
+          border: '1px solid rgba(148, 163, 184, 0.3)',
+          padding: '0.25rem 0.65rem',
+          borderRadius: '6px',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem'
+        }}>
+          <AlertCircle size={12} />
+          Expired
+        </span>
+      );
+    }
+    return (
+      <span style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-muted)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.78rem' }}>
+        {status}
+      </span>
+    );
   };
 
   const handleEditFromDetails = (contract) => {
@@ -225,9 +325,20 @@ export const ContractManagementModule = () => {
     setIsModalOpen(true);
   };
 
+  const departmentDropdownOptions = React.useMemo(() => {
+    const list = [...departmentsList];
+    if (deptFilter && !list.includes(deptFilter)) {
+      list.push(deptFilter);
+    }
+    return [
+      { value: '', label: 'All Departments' },
+      ...list.map((d) => ({ value: d, label: d }))
+    ];
+  }, [departmentsList, deptFilter]);
+
   if (isDetailsOpen && selectedContractForDetails) {
     return (
-      <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+      <div className="responsive-page-container">
         <EmployeeContractDetailsModal
           isOpen={true}
           onClose={() => setIsDetailsOpen(false)}
@@ -247,7 +358,7 @@ export const ContractManagementModule = () => {
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="responsive-page-container">
       {/* Header Bar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
@@ -296,13 +407,13 @@ export const ContractManagementModule = () => {
         <div className="glass-panel" style={{ padding: '1.25rem', borderLeft: '4px solid #60A5FA' }}>
           <div style={{ fontSize: '0.78rem', color: '#93C5FD', textTransform: 'uppercase', fontWeight: 600 }}>Monthly Wage Commitment</div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#60A5FA', marginTop: '0.2rem' }}>
-            ${totalWageCommitment.toLocaleString()} /mo
+            ₹{totalWageCommitment.toLocaleString()} /mo
           </div>
         </div>
       </div>
 
       {/* Filter Toolbar */}
-      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 50 }}>
+      <div className="glass-panel toolbar-flex-wrap" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '280px' }}>
           <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
             <Search size={18} color="#64748B" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)' }} />
@@ -333,13 +444,7 @@ export const ContractManagementModule = () => {
 
           <div style={{ minWidth: '180px' }}>
             <CustomDropdown
-              options={[
-                { value: '', label: 'All Departments' },
-                { value: 'Engineering', label: 'Engineering' },
-                { value: 'Executive Management', label: 'Executive Management' },
-                { value: 'HR & Operations', label: 'HR & Operations' },
-                { value: 'Sales & Marketing', label: 'Sales & Marketing' }
-              ]}
+              options={departmentDropdownOptions}
               value={deptFilter}
               onChange={(val) => setDeptFilter(val)}
               placeholder="All Departments"
@@ -347,7 +452,15 @@ export const ContractManagementModule = () => {
           </div>
         </div>
 
-        <button onClick={loadContracts} className="btn-secondary" style={{ padding: '0.6rem 0.9rem' }} title="Refresh Contracts">
+        <button
+          onClick={() => {
+            loadContracts();
+            loadDepartments(contracts);
+          }}
+          className="btn-secondary"
+          style={{ padding: '0.6rem 0.9rem' }}
+          title="Refresh Contracts & Departments"
+        >
           <RefreshCw size={16} />
         </button>
       </div>
@@ -379,7 +492,8 @@ export const ContractManagementModule = () => {
                   </tr>
                 ) : (
                   displayContracts.map((c) => {
-                    const isRunning = c.status === 'RUNNING';
+                    const isRunning = isRunningStatus(c.status);
+                    const isPermanent = c.employeeType === 'Permanent';
                     return (
                       <tr key={c.id || c._id} style={{ background: isRunning ? 'rgba(16, 185, 129, 0.04)' : 'transparent' }}>
                         <td>
@@ -408,8 +522,8 @@ export const ContractManagementModule = () => {
                           </div>
                         </td>
                         <td>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#FBBF24', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            <span>{c.employeeType || 'Contract'}</span>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isPermanent ? '#34D399' : '#FBBF24', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <span>{c.employeeType || 'Permanent'}</span>
                             {(() => {
                               const empKey = (c.employeeEmail || c.employeeName || c.id || c._id).toLowerCase().trim();
                               const totalCount = employeeContractCounts.get(empKey) || 1;
@@ -436,7 +550,7 @@ export const ContractManagementModule = () => {
                             })()}
                           </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                            📅 {c.startDate} {c.endDate ? `to ${c.endDate}` : '(Indefinite)'}
+                            📅 {formatDateDisplay(c.startDate)} {c.endDate ? `to ${formatDateDisplay(c.endDate)}` : '(Indefinite)'}
                           </div>
                         </td>
                         <td>
@@ -445,13 +559,13 @@ export const ContractManagementModule = () => {
                         </td>
                         <td>
                           <div style={{ fontWeight: 700, color: '#10B981', fontSize: '0.95rem' }}>
-                            ${Number(c.wage || 0).toLocaleString()}
+                            ₹{Number(c.wage || 0).toLocaleString()}
                           </div>
                         </td>
                         <td>{getStatusBadge(c.status)}</td>
                         <td>
                           {isHRAdmin ? (
-                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', position: 'relative' }}>
                               <button
                                 onClick={() => {
                                   setSelectedContractForEdit(c);
@@ -459,7 +573,7 @@ export const ContractManagementModule = () => {
                                   setIsModalOpen(true);
                                 }}
                                 className="btn-secondary"
-                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                                style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
                                 title="Edit contract terms"
                               >
                                 <Edit2 size={13} />
@@ -485,25 +599,148 @@ export const ContractManagementModule = () => {
                                 Renew Plan
                               </button>
 
-                              {c.status === 'DRAFT' && (
+                              {/* 3-Dots Action Menu */}
+                              <div style={{ position: 'relative' }}>
                                 <button
-                                  onClick={() => handleActivateContract(c.id || c._id)}
-                                  className="btn-primary"
-                                  style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', background: 'rgba(16, 185, 129, 0.2)', border: '1px solid #10B981', color: '#34D399' }}
-                                  title="Activate this contract as RUNNING for payroll"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const cId = c.id || c._id;
+                                    setActiveDropdownContractId(activeDropdownContractId === cId ? null : cId);
+                                  }}
+                                  style={{
+                                    background: activeDropdownContractId === (c.id || c._id) ? 'rgba(124, 58, 237, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                                    color: '#E2E8F0',
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="Actions & Options"
                                 >
-                                  Activate
+                                  <MoreVertical size={14} />
                                 </button>
-                              )}
 
-                              <button
-                                onClick={() => handleDeleteContract(c.id || c._id, c.contractRef)}
-                                className="btn-danger-outline"
-                                style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}
-                                title="Delete record"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                                {/* Dropdown Menu */}
+                                {activeDropdownContractId === (c.id || c._id) && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      position: 'absolute',
+                                      right: 0,
+                                      top: 'calc(100% + 4px)',
+                                      background: '#1A162B',
+                                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                                      borderRadius: '10px',
+                                      boxShadow: '0 12px 30px rgba(0, 0, 0, 0.65)',
+                                      padding: '0.35rem',
+                                      minWidth: '200px',
+                                      zIndex: 100,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '0.2rem',
+                                      textAlign: 'left'
+                                    }}
+                                  >
+                                    <button
+                                      onClick={() => {
+                                        setActiveDropdownContractId(null);
+                                        setSelectedContractForEdit(c);
+                                        setIsRenewalMode(false);
+                                        setIsModalOpen(true);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.6rem',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#E2E8F0',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <Edit2 size={13} color="#A78BFA" />
+                                      <span>Edit Contract</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setActiveDropdownContractId(null);
+                                        handleRenewPlan(c);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.6rem',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#E2E8F0',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <RefreshCw size={13} color="#10B981" />
+                                      <span>Renew Plan</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setActiveDropdownContractId(null);
+                                        handleToggleContractStatus(c.id || c._id, c.status);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: isRunningStatus(c.status) ? '#FBBF24' : '#34D399',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                        {isRunningStatus(c.status) ? <XCircle size={14} color="#FBBF24" /> : <CheckCircle2 size={14} color="#34D399" />}
+                                        <span>{isRunningStatus(c.status) ? 'Deactivate (Expire)' : 'Activate Contract'}</span>
+                                      </div>
+                                      <StatusToggleSwitch
+                                        isActive={isRunningStatus(c.status)}
+                                        onToggle={() => {
+                                          setActiveDropdownContractId(null);
+                                          handleToggleContractStatus(c.id || c._id, c.status);
+                                        }}
+                                        size="sm"
+                                      />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <button

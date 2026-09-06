@@ -141,11 +141,7 @@ let memoryConfig = {
   breakHours: 1.0,
   lateGraceMinutes: 15,
   weeklyOffDays: ['Sunday'],
-  holidays: [
-    { _id: 'h1', name: 'New Year Day', date: '2026-01-01', isPaid: true },
-    { _id: 'h2', name: 'Independence Day', date: '2026-08-15', isPaid: true },
-    { _id: 'h3', name: 'Christmas Day', date: '2026-12-25', isPaid: true }
-  ]
+  holidays: []
 };
 
 class AttendanceRepository {
@@ -155,6 +151,17 @@ class AttendanceRepository {
         let conf = await AttendanceConfig.findOne();
         if (!conf) {
           conf = await AttendanceConfig.create(memoryConfig);
+        } else if (conf.holidays && conf.holidays.length > 0) {
+          // Remove static pre-seeded dummy holidays (New Year Day, Independence Day, Christmas Day)
+          const staticIds = ['h1', 'h2', 'h3'];
+          const staticNames = ['New Year Day', 'Independence Day', 'Christmas Day'];
+          const filtered = conf.holidays.filter(
+            (h) => !staticIds.includes(h._id) && !staticNames.includes(h.name)
+          );
+          if (filtered.length !== conf.holidays.length) {
+            conf.holidays = filtered;
+            await conf.save();
+          }
         }
         return conf;
       } catch (e) {}

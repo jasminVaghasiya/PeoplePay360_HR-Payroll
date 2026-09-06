@@ -36,12 +36,14 @@ const createContractSchema = Joi.object({
     'number.min': 'Monthly wage cannot be negative.',
     'any.required': 'Monthly wage is required.'
   }),
-  status: Joi.string().valid('DRAFT', 'RUNNING', 'EXPIRED', 'CANCELLED').default('RUNNING'),
+  contractName: Joi.string().trim().optional().allow(''),
+  status: Joi.string().valid('DRAFT', 'Draft', 'RUNNING', 'Running', 'ACTIVE', 'Active', 'EXPIRED', 'Expired', 'CANCELLED', 'Cancelled', 'TERMINATED', 'Terminated').default('RUNNING'),
   notes: Joi.string().trim().optional().allow(''),
   isRenewal: Joi.boolean().optional().default(false)
 });
 
 const updateContractSchema = Joi.object({
+  contractName: Joi.string().trim().optional().allow(''),
   employeeName: Joi.string().trim().min(2).optional(),
   employeeEmail: Joi.string().trim().email().optional(),
   password: Joi.string().optional().allow(''),
@@ -51,7 +53,7 @@ const updateContractSchema = Joi.object({
   department: Joi.string().trim().optional(),
   jobPosition: Joi.string().trim().optional(),
   wage: Joi.number().min(0).optional(),
-  status: Joi.string().valid('DRAFT', 'RUNNING', 'EXPIRED', 'CANCELLED').optional(),
+  status: Joi.string().valid('DRAFT', 'Draft', 'RUNNING', 'Running', 'ACTIVE', 'Active', 'EXPIRED', 'Expired', 'CANCELLED', 'Cancelled', 'TERMINATED', 'Terminated').optional(),
   notes: Joi.string().trim().optional().allow(''),
   isRenewal: Joi.boolean().optional()
 });

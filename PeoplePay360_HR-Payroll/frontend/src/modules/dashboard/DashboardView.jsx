@@ -6,7 +6,9 @@ import { AttendanceDashboardView } from './AttendanceDashboardView';
 import { PayrollDashboardView } from './PayrollDashboardView';
 
 export const DashboardView = () => {
-  const { user } = useAuth();
+  const { user, ability } = useAuth();
+  const isHRManager = user?.role === 'HR Manager';
+  const canAccessPayrollDashboard = !isHRManager && (ability ? ability.can('read', 'payrun') : ['Admin', 'HR Payroll Manager', 'HR Payroll User'].includes(user?.role));
   const [activeTab, setActiveTab] = useState('executive');
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -54,13 +56,15 @@ export const DashboardView = () => {
         // Safe fallback
       }
 
-      // 5. Fetch Payruns
+      // 5. Fetch Payruns (skip for HR Manager to prevent unauthorized access and 403 API errors)
       let allPayruns = [];
-      try {
-        const payrunsRes = await api.get('/payroll/payruns');
-        allPayruns = payrunsRes.data?.payruns || [];
-      } catch (e) {
-        // Safe fallback
+      if (canAccessPayrollDashboard) {
+        try {
+          const payrunsRes = await api.get('/payroll/payruns');
+          allPayruns = payrunsRes.data?.payruns || [];
+        } catch (e) {
+          // Safe fallback
+        }
       }
 
       // Compute Total Net Salary Paid (From Payruns or Contract wages in DB)
@@ -143,10 +147,16 @@ export const DashboardView = () => {
     loadDashboardData();
   }, []);
 
+  useEffect(() => {
+    if (!canAccessPayrollDashboard && activeTab === 'payroll') {
+      setActiveTab('executive');
+    }
+  }, [canAccessPayrollDashboard, activeTab]);
+
   const totalDeptWage = metrics.departmentExpenditures.reduce((acc, d) => acc + d.totalWage, 0) || 1;
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="responsive-page-container">
       
       {/* Top Header & Sub-Tab Switcher */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', marginBottom: '2rem' }}>
@@ -161,13 +171,13 @@ export const DashboardView = () => {
         </div>
 
         {/* Sub-Tab Navigation Bar with 3 Switch Buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button onClick={loadDashboardData} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '42px' }}>
             <RefreshCw size={16} />
             <span>Refresh Stats</span>
           </button>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', background: 'rgba(15, 21, 38, 0.9)', padding: '0.35rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backdropFilter: 'blur(10px)' }}>
+          <div className="scrollable-subtabs" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', background: 'rgba(15, 21, 38, 0.9)', padding: '0.35rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', backdropFilter: 'blur(10px)' }}>
             <button
               onClick={() => setActiveTab('executive')}
               style={{
@@ -212,34 +222,36 @@ export const DashboardView = () => {
               Attendance Dashboard
             </button>
 
-            <button
-              onClick={() => setActiveTab('payroll')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.6rem 1.15rem',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '0.88rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: 'none',
-                transition: 'all 0.2s ease',
-                background: activeTab === 'payroll' ? 'var(--primary-gradient)' : 'transparent',
-                color: activeTab === 'payroll' ? '#fff' : 'var(--text-muted)',
-                boxShadow: activeTab === 'payroll' ? 'var(--shadow-glow)' : 'none'
-              }}
-            >
-              <DollarSign size={16} />
-              Payroll Dashboard
-            </button>
+            {canAccessPayrollDashboard && (
+              <button
+                onClick={() => setActiveTab('payroll')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.6rem 1.15rem',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.88rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: 'none',
+                  transition: 'all 0.2s ease',
+                  background: activeTab === 'payroll' ? 'var(--primary-gradient)' : 'transparent',
+                  color: activeTab === 'payroll' ? '#fff' : 'var(--text-muted)',
+                  boxShadow: activeTab === 'payroll' ? 'var(--shadow-glow)' : 'none'
+                }}
+              >
+                <DollarSign size={16} />
+                Payroll Dashboard
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Render Selected View */}
       {activeTab === 'attendance' && <AttendanceDashboardView />}
-      {activeTab === 'payroll' && <PayrollDashboardView />}
+      {activeTab === 'payroll' && canAccessPayrollDashboard && <PayrollDashboardView />}
       {activeTab === 'executive' && (
         <>
           {loading ? (
@@ -251,19 +263,35 @@ export const DashboardView = () => {
               
               {/* Executive KPI Stat Cards */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem' }}>
-                <div className="glass-panel" style={{ padding: '1.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL NET SALARY DISBURSED</span>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <DollarSign size={20} color="#10B981" />
+                {canAccessPayrollDashboard ? (
+                  <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL NET SALARY DISBURSED</span>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <DollarSign size={20} color="#10B981" />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '2.2rem', fontWeight: 700, color: '#fff' }}>₹{metrics.totalNetSalary.toLocaleString('en-IN')}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#34D399', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.4rem' }}>
+                      <TrendingUp size={14} />
+                      <span>Verified against MongoDB payruns & contracts</span>
                     </div>
                   </div>
-                  <div style={{ fontSize: '2.2rem', fontWeight: 700, color: '#fff' }}>₹{metrics.totalNetSalary.toLocaleString('en-IN')}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#34D399', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.4rem' }}>
-                    <TrendingUp size={14} />
-                    <span>Verified against MongoDB payruns & contracts</span>
+                ) : (
+                  <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>TOTAL CONTRACTS</span>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <CreditCard size={20} color="#10B981" />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '2.2rem', fontWeight: 700, color: '#fff' }}>{metrics.totalContractsCount} Bound</div>
+                    <div style={{ fontSize: '0.8rem', color: '#34D399', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.4rem' }}>
+                      <CheckCircle size={14} />
+                      <span>Active employment contract records</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="glass-panel" style={{ padding: '1.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
@@ -331,31 +359,56 @@ export const DashboardView = () => {
                   </div>
                 </div>
 
-                <div className="glass-panel" style={{ padding: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', color: '#fff', marginBottom: '1rem' }}>Live Department Monthly Expenditure</h3>
-                  {metrics.departmentExpenditures.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      {metrics.departmentExpenditures.map((dept, i) => {
-                        const pct = Math.round((dept.totalWage / totalDeptWage) * 100);
-                        return (
+                {canAccessPayrollDashboard ? (
+                  <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', color: '#fff', marginBottom: '1rem' }}>Live Department Monthly Expenditure</h3>
+                    {metrics.departmentExpenditures.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {metrics.departmentExpenditures.map((dept, i) => {
+                          const pct = Math.round((dept.totalWage / totalDeptWage) * 100);
+                          return (
+                            <div key={i}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', marginBottom: '0.3rem' }}>
+                                <span style={{ color: '#fff', fontWeight: 600 }}>{dept.name}</span>
+                                <span style={{ color: '#C084FC', fontWeight: 600 }}>₹{dept.totalWage.toLocaleString('en-IN')} / mo</span>
+                              </div>
+                              <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: 'var(--primary-gradient)' }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', padding: '2rem 0', textAlign: 'center' }}>
+                        No active department expenditure recorded in database.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1.1rem', color: '#fff', marginBottom: '1rem' }}>Department Staff Headcount</h3>
+                    {metrics.departmentExpenditures.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {metrics.departmentExpenditures.map((dept, i) => (
                           <div key={i}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', marginBottom: '0.3rem' }}>
                               <span style={{ color: '#fff', fontWeight: 600 }}>{dept.name}</span>
-                              <span style={{ color: '#C084FC', fontWeight: 600 }}>₹{dept.totalWage.toLocaleString('en-IN')} / mo</span>
+                              <span style={{ color: '#34D399', fontWeight: 600 }}>{dept.count || 1} Staff</span>
                             </div>
                             <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
-                              <div style={{ width: `${pct}%`, height: '100%', background: 'var(--primary-gradient)' }} />
+                              <div style={{ width: `${Math.min(100, ((dept.count || 1) / (metrics.activeEmployeesCount || 1)) * 100)}%`, height: '100%', background: 'linear-gradient(135deg, #10B981, #059669)' }} />
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', padding: '2rem 0', textAlign: 'center' }}>
-                      No active department expenditure recorded in database.
-                    </div>
-                  )}
-                </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem', padding: '2rem 0', textAlign: 'center' }}>
+                        No department staffing records found in database.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}

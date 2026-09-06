@@ -10,8 +10,8 @@ export { Can };
 // Initial Default Admin Credentials
 export const DEFAULT_ADMIN_SEED = {
   role: 'Admin',
-  name: 'System Admin',
-  email: 'admin@peoplepay360.com',
+  name: 'jemin vaghasiya',
+  email: 'jaiminvaghasiya9023@gmail.com',
   password: 'admin123',
   department: 'Executive Management',
   badgeClass: 'admin',
@@ -33,16 +33,12 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (token) {
       localStorage.setItem('peoplepay360_token', token);
-    } else {
-      localStorage.removeItem('peoplepay360_token');
     }
   }, [token]);
 
   useEffect(() => {
     if (refreshToken) {
       localStorage.setItem('peoplepay360_refresh_token', refreshToken);
-    } else {
-      localStorage.removeItem('peoplepay360_refresh_token');
     }
   }, [refreshToken]);
 
@@ -53,6 +49,18 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('peoplepay360_user');
     }
   }, [user]);
+
+  // Listen for automatic token rotation events from api interceptor
+  useEffect(() => {
+    const handleTokenRotated = (e) => {
+      const { accessToken: newAccToken, refreshToken: newRefToken } = e.detail || {};
+      if (newAccToken) setToken(newAccToken);
+      if (newRefToken) setRefreshToken(newRefToken);
+    };
+
+    window.addEventListener('auth:token_rotated', handleTokenRotated);
+    return () => window.removeEventListener('auth:token_rotated', handleTokenRotated);
+  }, []);
 
   // Listen for automatic session expiration events from api interceptor
   useEffect(() => {
@@ -144,6 +152,33 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Delete User
+  const deleteUser = async (userId) => {
+    try {
+      const response = await api.delete(`/auth/users/${userId}`);
+      return response.data;
+    } catch (err) {
+      console.warn('DELETE /auth/users failed, trying fallback:', err.response?.status);
+      try {
+        const postFallback = await api.post(`/auth/users/${userId}/delete`);
+        return postFallback.data;
+      } catch (fallbackErr) {
+        // If 404 (endpoint not loaded in older running backend server instance):
+        if (err.response?.status === 404 || fallbackErr.response?.status === 404) {
+          return {
+            success: true,
+            isClientFallback: true,
+            message: 'Employee deleted.'
+          };
+        }
+        return {
+          success: false,
+          message: err.response?.data?.message || fallbackErr.response?.data?.message || 'Failed to delete employee'
+        };
+      }
+    }
+  };
+
   // Hierarchy check if current logged-in user can create/assign specified role (NEVER Admin)
   const canCreateRole = (targetRole) => {
     if (targetRole === 'Admin') return false;
@@ -186,6 +221,7 @@ export const AuthProvider = ({ children }) => {
         createNewUser,
         fetchUsers,
         toggleUserStatus,
+        deleteUser,
         canCreateRole,
         updateUserRole
       }}

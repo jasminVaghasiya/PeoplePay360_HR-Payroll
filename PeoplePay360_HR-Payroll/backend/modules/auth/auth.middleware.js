@@ -112,15 +112,18 @@ const authorizeRoles = (...allowedRoles) => {
 
 // Check if user has authority to create target role
 const canCreateRole = (creatorRole, targetRole) => {
+  if (creatorRole === ROLE.ADMIN || creatorRole === 'Admin') {
+    return [ROLE.ADMIN, 'Admin', ROLE.HR_PAYROLL_MANAGER, 'HR Payroll Manager', ROLE.HR_PAYROLL_USER, 'HR Payroll User', ROLE.HR_MANAGER, 'HR Manager', ROLE.EMPLOYEE, 'Employee'].includes(targetRole);
+  }
   if (targetRole === 'Admin' || targetRole === ROLE.ADMIN) return false;
-  if (creatorRole === ROLE.ADMIN) {
-    return [ROLE.HR_PAYROLL_MANAGER, ROLE.HR_PAYROLL_USER, ROLE.HR_MANAGER, ROLE.EMPLOYEE].includes(targetRole);
+  if (creatorRole === ROLE.HR_PAYROLL_MANAGER || creatorRole === 'HR Payroll Manager') {
+    return [ROLE.HR_PAYROLL_USER, 'HR Payroll User', ROLE.HR_MANAGER, 'HR Manager', ROLE.EMPLOYEE, 'Employee'].includes(targetRole);
   }
-  if (creatorRole === ROLE.HR_PAYROLL_MANAGER) {
-    return [ROLE.HR_PAYROLL_USER, ROLE.HR_MANAGER, ROLE.EMPLOYEE].includes(targetRole);
+  if (creatorRole === ROLE.HR_MANAGER || creatorRole === 'HR Manager') {
+    return targetRole === ROLE.EMPLOYEE || targetRole === 'Employee';
   }
-  if (creatorRole === ROLE.HR_MANAGER) {
-    return targetRole === ROLE.EMPLOYEE;
+  if (creatorRole === ROLE.HR_PAYROLL_USER || creatorRole === 'HR Payroll User') {
+    return targetRole === ROLE.EMPLOYEE || targetRole === 'Employee';
   }
   return false;
 };

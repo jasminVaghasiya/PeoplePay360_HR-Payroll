@@ -22,7 +22,12 @@ import {
   Eye,
   Check,
   Ban,
-  AlertCircle
+  AlertCircle,
+  Maximize2,
+  List,
+  LayoutGrid,
+  ArrowUpDown,
+  ChevronRight
 } from 'lucide-react';
 
 import { RequestModal } from './RequestModal';
@@ -32,6 +37,8 @@ import { TimeOffTypeModal } from './TimeOffTypeModal';
 import { LeaveCalendarView } from './LeaveCalendarView';
 import { LeaveBalanceCards } from './LeaveBalanceCards';
 import { LeaveAuditTrailView } from './LeaveAuditTrailView';
+import { FullWindowLeaveModal } from './FullWindowLeaveModal';
+import { UserDisplayCell } from '../../components/UserDisplayCell';
 
 export const TimeOffHub = () => {
   const { user } = useAuth();
@@ -56,7 +63,15 @@ export const TimeOffHub = () => {
   const [allocations, setAllocations] = useState([]);
   const [types, setTypes] = useState([]);
   const [balances, setBalances] = useState([]);
+  const [staffBalances, setStaffBalances] = useState([]);
+  const [balanceViewMode, setBalanceViewMode] = useState('table'); // 'table' | 'cards'
+  const [balanceSearch, setBalanceSearch] = useState('');
+  const [balanceDeptFilter, setBalanceDeptFilter] = useState('');
+  const [balanceStatusFilter, setBalanceStatusFilter] = useState('');
+  const [balanceSort, setBalanceSort] = useState('remaining_desc');
   const [employees, setEmployees] = useState([]);
+  const [selectedEmployeeForBalance, setSelectedEmployeeForBalance] = useState(null);
+  const [isFullWindowLeaveOpen, setIsFullWindowLeaveOpen] = useState(false);
 
   // Filter states
   const [search, setSearch] = useState('');
@@ -136,14 +151,28 @@ export const TimeOffHub = () => {
   };
 
   // Fetch Balances
-  const fetchBalances = async () => {
+  const fetchBalances = async (targetEmpId = null) => {
     try {
-      const res = await api.get('/timeoff/balances');
+      const empId = targetEmpId || (selectedEmployeeForBalance?._id || selectedEmployeeForBalance?.id) || (user?._id || user?.id);
+      const res = await api.get('/timeoff/balances', { params: empId ? { employeeId: empId } : {} });
       if (res.data.success) {
         setBalances(res.data.balances);
       }
     } catch (e) {
       console.error('Balances fetch error:', e);
+    }
+  };
+
+  // Fetch Staff Balances for directory table
+  const fetchStaffBalances = async () => {
+    if (!isHR) return;
+    try {
+      const res = await api.get('/timeoff/balances', { params: { all: true } });
+      if (res.data.success && res.data.staffBalances) {
+        setStaffBalances(res.data.staffBalances);
+      }
+    } catch (e) {
+      console.error('Staff balances fetch error:', e);
     }
   };
 
@@ -167,7 +196,8 @@ export const TimeOffHub = () => {
       fetchAllocations(),
       fetchTypes(),
       fetchBalances(),
-      fetchEmployees()
+      fetchEmployees(),
+      fetchStaffBalances()
     ]);
     setLoading(false);
   };
@@ -175,6 +205,13 @@ export const TimeOffHub = () => {
   useEffect(() => {
     refreshAllData();
   }, [statusFilter, typeFilter]);
+
+  useEffect(() => {
+    if (subTab === 'balances') {
+      fetchStaffBalances();
+      fetchBalances();
+    }
+  }, [subTab]);
 
   // Quick Manager Approve Request
   const handleQuickApproveRequest = async (id, e) => {
@@ -343,7 +380,7 @@ export const TimeOffHub = () => {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="responsive-page-container">
       {/* Toast Notification */}
       {toastMessage && (
         <div style={{
@@ -545,7 +582,7 @@ export const TimeOffHub = () => {
       </div>
 
       {/* Navigation Sub-Tabs (Segmented Pill Design) */}
-      <div style={{
+      <div className="scrollable-subtabs" style={{
         display: 'inline-flex',
         background: 'rgba(15, 23, 42, 0.8)',
         backdropFilter: 'blur(12px)',
@@ -635,7 +672,7 @@ export const TimeOffHub = () => {
       {subTab === 'requests' && (
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           {/* Filter Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div className="toolbar-flex-wrap" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <div className="search-box" style={{ maxWidth: '280px' }}>
                 <Search size={16} />
@@ -709,15 +746,12 @@ export const TimeOffHub = () => {
                   {requests.map((req) => (
                     <tr key={req._id} onClick={() => openRequestDetail(req)} style={{ cursor: 'pointer' }}>
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <div className="avatar-circle">
-                            {getInitials(req.employeeName)}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 600, color: '#fff' }}>{req.employeeName}</div>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{req.department || 'General'}</span>
-                          </div>
-                        </div>
+                        <UserDisplayCell
+                          name={req.employeeName}
+                          subtitle={req.department || 'General'}
+                          photo={req.employeePhoto || req.photo}
+                          size={34}
+                        />
                       </td>
                       <td>
                         <span style={{
@@ -1012,23 +1046,697 @@ export const TimeOffHub = () => {
       {/* ========================================================================= */}
       {/* SUBTAB 5: BALANCES VIEW */}
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
+      {/* SUBTAB 5: BALANCES VIEW */}
+      {/* ========================================================================= */}
       {subTab === 'balances' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Top Title & View Mode Controls */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-                {isHR ? 'Staff Leave Balances & Entitlements' : 'My Leave Balances'}
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.6rem', margin: 0 }}>
+                <BarChart3 size={22} color="#A855F7" />
+                <span>{isHR ? 'Staff Leave Balances & Entitlements Directory' : 'My Leave Balances & Entitlements'}</span>
               </h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Real-time calculated available days across all active policies
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0.35rem 0 0 0' }}>
+                Real-time annual quotas, utilized days, pending submissions, and remaining available time-off.
               </p>
             </div>
-            <button onClick={() => openRequestModal()} className="btn-primary">
-              <Plus size={16} /> Request Time Off
-            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              {/* View Switcher: Table vs Cards */}
+              <div
+                style={{
+                  display: 'flex',
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '10px',
+                  padding: '0.2rem'
+                }}
+              >
+                <button
+                  onClick={() => setBalanceViewMode('table')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: balanceViewMode === 'table' ? 'linear-gradient(135deg, #7C3AED, #9333EA)' : 'transparent',
+                    color: balanceViewMode === 'table' ? '#fff' : '#94A3B8',
+                    fontSize: '0.82rem',
+                    fontWeight: balanceViewMode === 'table' ? 700 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="View employee balances in table format"
+                >
+                  <List size={15} />
+                  <span>Table View</span>
+                </button>
+
+                <button
+                  onClick={() => setBalanceViewMode('cards')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: balanceViewMode === 'cards' ? 'linear-gradient(135deg, #7C3AED, #9333EA)' : 'transparent',
+                    color: balanceViewMode === 'cards' ? '#fff' : '#94A3B8',
+                    fontSize: '0.82rem',
+                    fontWeight: balanceViewMode === 'cards' ? 700 : 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="View leave policy cards"
+                >
+                  <LayoutGrid size={15} />
+                  <span>Cards View</span>
+                </button>
+              </div>
+
+              {/* View Full Window Button */}
+              <button
+                onClick={() => {
+                  setSelectedEmployeeForBalance(null);
+                  setIsFullWindowLeaveOpen(true);
+                }}
+                className="btn-primary"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: 'linear-gradient(135deg, #7C3AED, #9333EA)',
+                  boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)',
+                  fontSize: '0.85rem'
+                }}
+                title="Open leave details in full window modal"
+              >
+                <Maximize2 size={15} />
+                <span>Open in Full Window</span>
+              </button>
+
+              <button
+                onClick={() => openRequestModal()}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+              >
+                <Plus size={15} />
+                <span>Request Time Off</span>
+              </button>
+            </div>
           </div>
 
-          <LeaveBalanceCards balances={balances} />
+          {/* ========================================================================= */}
+          {/* TABULAR VIEW WITH FILTERS */}
+          {/* ========================================================================= */}
+          {balanceViewMode === 'table' ? (
+            <div className="glass-panel" style={{ padding: '1.25rem 1.5rem' }}>
+              {/* Filter Ribbon */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '0.85rem',
+                  marginBottom: '1.25rem',
+                  paddingBottom: '1rem',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flex: 1 }}>
+                  {/* Search Filter */}
+                  <div className="search-box" style={{ minWidth: '240px', maxWidth: '320px', flex: 1 }}>
+                    <Search size={15} color="#94A3B8" />
+                    <input
+                      type="text"
+                      placeholder="Search employee, email, role..."
+                      value={balanceSearch}
+                      onChange={(e) => setBalanceSearch(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Department Filter */}
+                  <div style={{ minWidth: '160px' }}>
+                    <CustomDropdown
+                      options={[
+                        { value: '', label: 'All Departments' },
+                        ...Array.from(new Set(staffBalances.map((s) => s.employee?.department).filter(Boolean))).map((d) => ({
+                          value: d,
+                          label: d
+                        }))
+                      ]}
+                      value={balanceDeptFilter}
+                      onChange={(val) => setBalanceDeptFilter(val)}
+                      placeholder="Department"
+                    />
+                  </div>
+
+                  {/* Leave Availability Filter */}
+                  <div style={{ minWidth: '175px' }}>
+                    <CustomDropdown
+                      options={[
+                        { value: '', label: 'All Leave Statuses' },
+                        { value: 'has_remaining', label: 'Has Available Days (> 0)' },
+                        { value: 'zero_remaining', label: 'Exhausted Quota (0 Days)' },
+                        { value: 'pending_req', label: 'Has Pending Approvals' },
+                        { value: 'high_used', label: 'High Usage (> 5 Days)' }
+                      ]}
+                      value={balanceStatusFilter}
+                      onChange={(val) => setBalanceStatusFilter(val)}
+                      placeholder="Availability"
+                    />
+                  </div>
+
+                  {/* Sort Filter */}
+                  <div style={{ minWidth: '185px' }}>
+                    <CustomDropdown
+                      options={[
+                        { value: 'remaining_desc', label: 'Sort: Most Remaining Leave' },
+                        { value: 'remaining_asc', label: 'Sort: Least Remaining Leave' },
+                        { value: 'used_desc', label: 'Sort: Most Days Used' },
+                        { value: 'name_asc', label: 'Sort: Name (A to Z)' }
+                      ]}
+                      value={balanceSort}
+                      onChange={(val) => setBalanceSort(val)}
+                      placeholder="Sort Order"
+                    />
+                  </div>
+
+                  {/* Reset Filters */}
+                  {(balanceSearch || balanceDeptFilter || balanceStatusFilter || balanceSort !== 'remaining_desc') && (
+                    <button
+                      onClick={() => {
+                        setBalanceSearch('');
+                        setBalanceDeptFilter('');
+                        setBalanceStatusFilter('');
+                        setBalanceSort('remaining_desc');
+                      }}
+                      style={{
+                        padding: '0.45rem 0.8rem',
+                        borderRadius: '8px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                        color: '#F87171',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span>Click any employee row to open full window</span>
+                </div>
+              </div>
+
+              {/* Tabular Data Grid */}
+              {(() => {
+                // Build unified employee balances with live pending and used requests
+                const baseList = employees.length > 0 ? employees : staffBalances.map(s => s.employee);
+                const list = baseList.map((emp) => {
+                  const empId = (emp._id || emp.id || '').toString();
+                  const empName = (emp.name || '').trim();
+                  const empEmail = (emp.email || '').toLowerCase().trim();
+
+                  // Find if staffBalances has this employee's computed record
+                  const fromStaffBalances = staffBalances.find((s) => {
+                    const sId = (s.employee?._id || s.employee?.id || '').toString();
+                    const sEmail = (s.employee?.email || '').toLowerCase().trim();
+                    return (sId && sId === empId) || (sEmail && sEmail === empEmail);
+                  });
+
+                  // Calculate live pending requests for this employee from requests state
+                  const empPendingRequests = requests.filter((r) => {
+                    const rEmpId = (r.employee?._id || r.employee?.id || r.employee || '').toString();
+                    const rName = (r.employeeName || '').trim();
+                    const rEmail = (r.employeeEmail || '').toLowerCase().trim();
+                    const isEmpMatch = (rEmpId && rEmpId === empId) || (rEmail && rEmail === empEmail) || (rName && rName.toLowerCase() === empName.toLowerCase());
+                    return isEmpMatch && (r.status === 'Pending' || r.status === 'Pending Approval');
+                  });
+                  const livePendingDays = empPendingRequests.reduce((sum, r) => sum + (Number(r.duration) || Number(r.days) || 0), 0);
+
+                  // Calculate live approved requests for this employee from requests state
+                  const empApprovedRequests = requests.filter((r) => {
+                    const rEmpId = (r.employee?._id || r.employee?.id || r.employee || '').toString();
+                    const rName = (r.employeeName || '').trim();
+                    const rEmail = (r.employeeEmail || '').toLowerCase().trim();
+                    const isEmpMatch = (rEmpId && rEmpId === empId) || (rEmail && rEmail === empEmail) || (rName && rName.toLowerCase() === empName.toLowerCase());
+                    return isEmpMatch && r.status === 'Approved';
+                  });
+                  const liveUsedDays = empApprovedRequests.reduce((sum, r) => sum + (Number(r.duration) || Number(r.days) || 0), 0);
+
+                  // Calculate live allocations for this employee from allocations state
+                  const empAllocations = allocations.filter((a) => {
+                    const aEmpId = (a.employee?._id || a.employee?.id || a.employee || '').toString();
+                    const aName = (a.employeeName || '').trim();
+                    const aEmail = (a.employeeEmail || '').toLowerCase().trim();
+                    const isEmpMatch = (aEmpId && aEmpId === empId) || (aEmail && aEmail === empEmail) || (aName && aName.toLowerCase() === empName.toLowerCase());
+                    return isEmpMatch && (a.status === 'Approved' || a.status === 'Active');
+                  });
+                  const liveAllocatedDays = empAllocations.length > 0
+                    ? empAllocations.reduce((sum, a) => sum + (Number(a.allocatedAmount) || 0), 0)
+                    : (fromStaffBalances?.totalAllocated || 24);
+
+                  const totalAllocated = fromStaffBalances?.totalAllocated || liveAllocatedDays;
+                  const totalUsed = Math.max(fromStaffBalances?.totalUsed || 0, liveUsedDays);
+                  const totalPending = Math.max(fromStaffBalances?.totalPending || 0, livePendingDays);
+                  const totalRemaining = fromStaffBalances?.totalRemaining !== undefined
+                    ? fromStaffBalances.totalRemaining
+                    : Math.max(0, totalAllocated - totalUsed);
+
+                  // Resolve employee type dynamically from contract end date & contract duration attributes
+                  const isContract = emp.employeeType === 'Contract' && Boolean(emp.contractEndDate || emp.contractDuration);
+                  const resolvedType = isContract ? 'Contract' : (emp.employeeType === 'Contract' && !emp.contractEndDate && !emp.contractDuration ? 'Permanent' : (emp.employeeType || 'Permanent'));
+
+                  // Per policy breakdown
+                  let balancesList = fromStaffBalances?.balances || [];
+                  if (!balancesList || balancesList.length === 0) {
+                    const policyTypes = types.length > 0 ? types : [
+                      { name: 'Paid Time Off', code: 'PTO', defaultDays: 12 },
+                      { name: 'Sick Leave', code: 'SICK', defaultDays: 8 },
+                      { name: 'Casual Leave', code: 'CASUAL', defaultDays: 4 }
+                    ];
+                    balancesList = policyTypes.map((t) => {
+                      const tAlloc = empAllocations.filter(a => (a.timeOffType?._id || a.timeOffType) === t._id || a.timeOffTypeName === t.name)
+                        .reduce((sum, a) => sum + (Number(a.allocatedAmount) || 0), 0) || t.defaultDays || (t.code === 'SICK' ? 8 : (t.code === 'CASUAL' ? 4 : 12));
+                      const tUsed = empApprovedRequests.filter(r => (r.timeOffType?._id || r.timeOffType) === t._id || r.timeOffTypeName === t.name)
+                        .reduce((sum, r) => sum + (Number(r.duration) || Number(r.days) || 0), 0);
+                      const tPending = empPendingRequests.filter(r => (r.timeOffType?._id || r.timeOffType) === t._id || r.timeOffTypeName === t.name)
+                        .reduce((sum, r) => sum + (Number(r.duration) || Number(r.days) || 0), 0);
+                      return {
+                        timeOffTypeName: t.name,
+                        code: t.code || (t.name || 'LEV').slice(0, 3).toUpperCase(),
+                        allocated: tAlloc,
+                        used: tUsed,
+                        pending: tPending,
+                        remaining: Math.max(0, tAlloc - tUsed)
+                      };
+                    });
+                  }
+
+                  return {
+                    employee: {
+                      ...emp,
+                      employeeType: resolvedType
+                    },
+                    totalRemaining,
+                    totalAllocated,
+                    totalUsed,
+                    totalPending,
+                    balances: balancesList
+                  };
+                });
+
+                const filtered = list.filter((item) => {
+                  const emp = item.employee || {};
+                  const query = balanceSearch.toLowerCase();
+                  const matchSearch =
+                    !query ||
+                    (emp.name || '').toLowerCase().includes(query) ||
+                    (emp.email || '').toLowerCase().includes(query) ||
+                    (emp.department || '').toLowerCase().includes(query) ||
+                    (emp.jobPosition || '').toLowerCase().includes(query);
+
+                  const matchDept = !balanceDeptFilter || emp.department === balanceDeptFilter;
+
+                  let matchStatus = true;
+                  if (balanceStatusFilter === 'has_remaining') matchStatus = item.totalRemaining > 0;
+                  else if (balanceStatusFilter === 'zero_remaining') matchStatus = item.totalRemaining === 0;
+                  else if (balanceStatusFilter === 'pending_req') matchStatus = item.totalPending > 0;
+                  else if (balanceStatusFilter === 'high_used') matchStatus = item.totalUsed > 5;
+
+                  return matchSearch && matchDept && matchStatus;
+                }).sort((a, b) => {
+                  if (balanceSort === 'remaining_desc') return b.totalRemaining - a.totalRemaining;
+                  if (balanceSort === 'remaining_asc') return a.totalRemaining - b.totalRemaining;
+                  if (balanceSort === 'used_desc') return b.totalUsed - a.totalUsed;
+                  if (balanceSort === 'name_asc') return (a.employee?.name || '').localeCompare(b.employee?.name || '');
+                  return 0;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '3.5rem 1rem', color: 'var(--text-muted)' }}>
+                      <BarChart3 size={38} style={{ opacity: 0.35, margin: '0 auto 0.75rem auto' }} />
+                      <div style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff' }}>No Employee Balances Found</div>
+                      <p style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>No employee records matched your filter criteria.</p>
+                      <button
+                        onClick={() => {
+                          setBalanceSearch('');
+                          setBalanceDeptFilter('');
+                          setBalanceStatusFilter('');
+                        }}
+                        className="btn-secondary"
+                        style={{ marginTop: '1rem', fontSize: '0.82rem' }}
+                      >
+                        Reset All Filters
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="data-table-container">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Employee</th>
+                          <th>Department & Role</th>
+                          <th>Policy Balances Breakdown</th>
+                          <th>Remaining Available Leave</th>
+                          <th style={{ textAlign: 'center', minWidth: '95px' }}>Days Used</th>
+                          <th style={{ textAlign: 'center', minWidth: '130px' }}>Pending</th>
+                          <th style={{ textAlign: 'right' }}>Full Window Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((item) => {
+                          const emp = item.employee || {};
+                          const empId = emp._id || emp.id;
+                          const totalRem = item.totalRemaining || 0;
+                          const totalAlloc = item.totalAllocated || 0;
+                          const totalUsed = item.totalUsed || 0;
+                          const totalPend = item.totalPending || 0;
+                          const pctRemaining = totalAlloc > 0 ? Math.round((totalRem / totalAlloc) * 100) : 100;
+
+                          return (
+                            <tr
+                              key={empId}
+                              onClick={() => {
+                                setSelectedEmployeeForBalance(emp);
+                                setIsFullWindowLeaveOpen(true);
+                              }}
+                              style={{ cursor: 'pointer', transition: 'background 0.15s ease' }}
+                              title="Click to inspect complete leave details and request history in full window"
+                            >
+                              <td>
+                                <UserDisplayCell
+                                  name={emp.name}
+                                  email={emp.email}
+                                  photo={emp.photo}
+                                  role={emp.role}
+                                  department={emp.department}
+                                  employeeType={emp.employeeType}
+                                  size={36}
+                                />
+                              </td>
+
+                              {/* Department & Role */}
+                              <td>
+                                <div style={{ color: '#E2E8F0', fontWeight: 600, fontSize: '0.88rem' }}>{emp.department || 'General'}</div>
+                                <div style={{ fontSize: '0.76rem', color: 'var(--text-dim)' }}>{emp.jobPosition || emp.role || 'Staff'}</div>
+                              </td>
+
+                              {/* Policy Breakdown Chips */}
+                              <td>
+                                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', maxWidth: '280px' }}>
+                                  {(item.balances || []).map((b, bIdx) => {
+                                    const code = b.code || (b.timeOffTypeName || '').slice(0, 3).toUpperCase();
+                                    const rem = b.remaining || 0;
+                                    return (
+                                      <span
+                                        key={b.timeOffTypeId || bIdx}
+                                        style={{
+                                          padding: '0.2rem 0.5rem',
+                                          borderRadius: '6px',
+                                          fontSize: '0.74rem',
+                                          fontWeight: 600,
+                                          background: 'rgba(255, 255, 255, 0.04)',
+                                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                                          color: rem > 0 ? '#CBD5E1' : '#64748B',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.3rem'
+                                        }}
+                                        title={`${b.timeOffTypeName}: ${rem} days remaining out of ${b.allocated} allocated`}
+                                      >
+                                        <strong style={{ color: '#A855F7' }}>{code}:</strong>
+                                        <span style={{ color: rem > 0 ? '#34D399' : '#94A3B8' }}>{rem}d</span>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+
+                              {/* Remaining Available Leave */}
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '150px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem' }}>
+                                    <span
+                                      style={{
+                                        fontSize: '1.25rem',
+                                        fontWeight: 800,
+                                        color: totalRem > 0 ? '#34D399' : '#F87171'
+                                      }}
+                                    >
+                                      {totalRem}
+                                    </span>
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                      / {totalAlloc} days remaining
+                                    </span>
+                                  </div>
+
+                                  {/* Progress bar */}
+                                  <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div
+                                      style={{
+                                        width: `${pctRemaining}%`,
+                                        height: '100%',
+                                        background: pctRemaining > 50 ? '#10B981' : pctRemaining > 20 ? '#F59E0B' : '#EF4444',
+                                        borderRadius: '3px',
+                                        transition: 'width 0.3s ease'
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Days Used */}
+                              <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.85rem',
+                                    fontWeight: 600,
+                                    color: totalUsed > 0 ? '#F87171' : 'var(--text-muted)'
+                                  }}
+                                >
+                                  {totalUsed}d
+                                </span>
+                              </td>
+
+                              {/* Pending Approvals */}
+                              <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                {totalPend > 0 ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      padding: '0.28rem 0.65rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 600,
+                                      background: 'rgba(245, 158, 11, 0.12)',
+                                      color: '#FBBF24',
+                                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                                      whiteSpace: 'nowrap',
+                                      boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+                                    }}
+                                    title={`${totalPend} day(s) currently awaiting approval`}
+                                  >
+                                    <Clock size={12} color="#FBBF24" />
+                                    <span>{totalPend}d Pending</span>
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: 500 }}>
+                                    0d
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Full Window Action */}
+                              <td style={{ textAlign: 'right' }}>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedEmployeeForBalance(emp);
+                                    setIsFullWindowLeaveOpen(true);
+                                  }}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.45rem',
+                                    padding: '0.4rem 0.85rem',
+                                    borderRadius: '8px',
+                                    background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(147, 51, 234, 0.25))',
+                                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                                    color: '#C084FC',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(135deg, #7C3AED, #9333EA)';
+                                    e.currentTarget.style.color = '#fff';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(147, 51, 234, 0.25))';
+                                    e.currentTarget.style.color = '#C084FC';
+                                  }}
+                                  title="Open comprehensive leave details in full window"
+                                >
+                                  <Maximize2 size={13} />
+                                  <span>View Details</span>
+                                  <ChevronRight size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            /* ========================================================================= */
+            /* CARDS VIEW WITH EMPLOYEE QUICK SELECTOR */
+            /* ========================================================================= */
+            <div>
+              {/* Employee Selector Bar for HR/Management */}
+              {isHR && (
+                <div
+                  className="glass-panel"
+                  style={{
+                    padding: '1rem 1.25rem',
+                    marginBottom: '1.25rem',
+                    background: 'rgba(15, 23, 42, 0.7)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#E2E8F0', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <User size={15} color="#C084FC" />
+                      <span>Select Employee to Inspect Live Balances:</span>
+                    </div>
+                    {selectedEmployeeForBalance && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#94A3B8' }}>
+                          Active: <strong style={{ color: '#fff' }}>{selectedEmployeeForBalance.name}</strong> ({selectedEmployeeForBalance.department || 'General'})
+                        </span>
+                        <button
+                          onClick={() => setIsFullWindowLeaveOpen(true)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '6px',
+                            background: 'rgba(124, 58, 237, 0.2)',
+                            border: '1px solid rgba(168, 85, 247, 0.35)',
+                            color: '#C084FC',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <Maximize2 size={12} />
+                          <span>Inspect in Full Window</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Employee Selection Chips */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.65rem',
+                      overflowX: 'auto',
+                      paddingBottom: '0.4rem'
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        setSelectedEmployeeForBalance(null);
+                        fetchBalances(user?._id || user?.id);
+                      }}
+                      style={{
+                        padding: '0.4rem 0.85rem',
+                        borderRadius: '20px',
+                        border: !selectedEmployeeForBalance ? '1px solid #A855F7' : '1px solid rgba(255, 255, 255, 0.1)',
+                        background: !selectedEmployeeForBalance ? 'rgba(124, 58, 237, 0.3)' : 'rgba(255, 255, 255, 0.04)',
+                        color: !selectedEmployeeForBalance ? '#fff' : '#94A3B8',
+                        fontSize: '0.8rem',
+                        fontWeight: !selectedEmployeeForBalance ? 700 : 500,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <span>My Own Balances ({user?.name})</span>
+                    </button>
+
+                    {employees.map((emp) => {
+                      const empId = emp._id || emp.id;
+                      const isSelected = selectedEmployeeForBalance && (selectedEmployeeForBalance._id || selectedEmployeeForBalance.id) === empId;
+                      return (
+                        <button
+                          key={empId}
+                          onClick={() => {
+                            setSelectedEmployeeForBalance(emp);
+                            fetchBalances(empId);
+                          }}
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '20px',
+                            border: isSelected ? '1px solid #A855F7' : '1px solid rgba(255, 255, 255, 0.08)',
+                            background: isSelected ? 'rgba(124, 58, 237, 0.35)' : 'rgba(255, 255, 255, 0.03)',
+                            color: isSelected ? '#fff' : '#CBD5E1',
+                            fontSize: '0.8rem',
+                            fontWeight: isSelected ? 700 : 500,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.45rem',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {emp.photo ? (
+                            <img src={emp.photo} alt={emp.name} style={{ width: '20px', height: '20px', borderRadius: '50%', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 700 }}>
+                              {(emp.name || 'U').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span>{emp.name}</span>
+                          <span style={{ fontSize: '0.7rem', color: isSelected ? '#C084FC' : '#64748B' }}>({emp.department || 'Gen'})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <LeaveBalanceCards balances={balances} />
+            </div>
+          )}
         </div>
       )}
 
@@ -1080,6 +1788,22 @@ export const TimeOffHub = () => {
         onActionSuccess={(msg) => {
           showToast(msg);
           refreshAllData();
+        }}
+      />
+
+      {/* Full Window Leave & Entitlements Modal */}
+      <FullWindowLeaveModal
+        isOpen={isFullWindowLeaveOpen}
+        onClose={() => setIsFullWindowLeaveOpen(false)}
+        employee={selectedEmployeeForBalance || user}
+        types={types}
+        onRequestTimeOff={() => {
+          setIsFullWindowLeaveOpen(false);
+          openRequestModal();
+        }}
+        onAllocateLeave={() => {
+          setIsFullWindowLeaveOpen(false);
+          openAllocationModal();
         }}
       />
     </div>

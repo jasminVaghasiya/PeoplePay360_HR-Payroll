@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { Contract } = require('./contract.model');
 const { getIsConnected } = require('../../config/db');
 
@@ -24,12 +25,15 @@ let memoryContracts = [
 ];
 
 class ContractRepository {
-  async findAll({ search, status, employeeId, department }) {
+  async findAll({ search, status, employeeId, department, employeeType }) {
     if (getIsConnected()) {
       let query = {};
       if (status) query.status = status;
       if (employeeId) query.employeeId = employeeId;
-      if (department) query.department = department;
+      if (department) {
+        query.department = { $regex: new RegExp(`^${department.trim()}$`, 'i') };
+      }
+      if (employeeType) query.employeeType = employeeType;
       if (search) {
         query.$or = [
           { contractRef: { $regex: search, $options: 'i' } },
@@ -44,7 +48,11 @@ class ContractRepository {
     let list = [...memoryContracts];
     if (status) list = list.filter((c) => c.status === status);
     if (employeeId) list = list.filter((c) => String(c.employeeId) === String(employeeId));
-    if (department) list = list.filter((c) => c.department === department);
+    if (department) {
+      const d = department.trim().toLowerCase();
+      list = list.filter((c) => (c.department || '').trim().toLowerCase() === d);
+    }
+    if (employeeType) list = list.filter((c) => (c.employeeType || 'Permanent') === employeeType);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -59,21 +67,30 @@ class ContractRepository {
 
   async findById(id) {
     if (getIsConnected()) {
-      const c = await Contract.findById(id);
-      if (c) return c;
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        const c = await Contract.findById(id);
+        if (c) return c;
+      } else {
+        const c = await Contract.findOne({ $or: [{ _id: id }, { id }] });
+        if (c) return c;
+      }
     }
     return memoryContracts.find((c) => c._id === id || c.id === id) || null;
   }
 
   async findActiveContractByEmployeeId(employeeId) {
     if (getIsConnected()) {
-      const c = await Contract.findOne({ employeeId, status: 'RUNNING' });
+      const c = await Contract.findOne({
+        employeeId,
+        status: { $in: ['RUNNING', 'Running', 'Active', 'ACTIVE'] }
+      }).sort({ createdAt: -1 });
       if (c) return c;
     }
-    return memoryContracts.find((c) => String(c.employeeId) === String(employeeId) && c.status === 'RUNNING') || null;
+    return memoryContracts.find((c) => String(c.employeeId) === String(employeeId) && ['RUNNING', 'Running', 'Active', 'ACTIVE'].includes(c.status)) || null;
   }
 
   async setOtherContractsExpired(employeeId, activeContractId, employeeName, employeeEmail) {
+    const activeStatuses = ['RUNNING', 'Running', 'Active', 'ACTIVE'];
     if (getIsConnected()) {
       const orConditions = [];
       if (employeeId) orConditions.push({ employeeId });
@@ -82,7 +99,7 @@ class ContractRepository {
 
       if (orConditions.length > 0) {
         await Contract.updateMany(
-          { _id: { $ne: activeContractId }, status: 'RUNNING', $or: orConditions },
+          { _id: { $ne: activeContractId }, status: { $in: activeStatuses }, $or: orConditions },
           { $set: { status: 'EXPIRED' } }
         );
       }
@@ -93,7 +110,7 @@ class ContractRepository {
       const isSameEmp = (employeeEmail && c.employeeEmail?.toLowerCase() === employeeEmail.toLowerCase()) ||
                         (employeeName && c.employeeName?.toLowerCase() === employeeName.toLowerCase()) ||
                         (employeeId && String(c.employeeId) === String(employeeId));
-      if (isSameEmp && c._id !== activeContractId && c.id !== activeContractId && c.status === 'RUNNING') {
+      if (isSameEmp && c._id !== activeContractId && c.id !== activeContractId && activeStatuses.includes(c.status)) {
         c.status = 'EXPIRED';
       }
     });
@@ -115,8 +132,9 @@ class ContractRepository {
       memoryContracts.unshift(newContract);
     }
 
-    // Avoid concurrent active contracts: If created as RUNNING, expire all other contracts for this employee
-    if (data.status === 'RUNNING') {
+    // Avoid concurrent active contracts: If created as active/running, expire all other contracts for this employee
+    const activeStatuses = ['RUNNING', 'Running', 'Active', 'ACTIVE'];
+    if (activeStatuses.includes(data.status)) {
       await this.setOtherContractsExpired(data.employeeId, newContract._id || newContract.id, data.employeeName, data.employeeEmail);
     }
 
@@ -127,7 +145,11 @@ class ContractRepository {
     let updated = null;
 
     if (getIsConnected()) {
-      updated = await Contract.findByIdAndUpdate(id, updateData, { new: true });
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        updated = await Contract.findByIdAndUpdate(id, updateData, { new: true });
+      } else {
+        updated = await Contract.findOneAndUpdate({ $or: [{ _id: id }, { id }] }, updateData, { new: true });
+      }
     }
 
     const index = memoryContracts.findIndex((c) => c._id === id || c.id === id);
@@ -136,7 +158,8 @@ class ContractRepository {
       if (!updated) updated = memoryContracts[index];
     }
 
-    if (updateData.status === 'RUNNING' && updated) {
+    const activeStatuses = ['RUNNING', 'Running', 'Active', 'ACTIVE'];
+    if (activeStatuses.includes(updateData.status) && updated) {
       await this.setOtherContractsExpired(updated.employeeId, id, updated.employeeName, updated.employeeEmail);
     }
 
@@ -149,7 +172,11 @@ class ContractRepository {
 
   async delete(id) {
     if (getIsConnected()) {
-      await Contract.findByIdAndDelete(id);
+      if (mongoose.Types.ObjectId.isValid(id)) {
+        await Contract.findByIdAndDelete(id);
+      } else {
+        await Contract.findOneAndDelete({ $or: [{ _id: id }, { id }] });
+      }
     }
     memoryContracts = memoryContracts.filter((c) => c._id !== id && c.id !== id);
     return true;

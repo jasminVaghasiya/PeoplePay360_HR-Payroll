@@ -42,14 +42,68 @@ const getSummary = async (req, res) => {
 // 3. Get leave balances
 const getBalances = async (req, res) => {
   try {
-    const employeeId = req.query.employeeId || req.user.id || req.user._id;
-    
+    const isHR = isHRorAdmin(req.user.role);
+    const { employeeId, all } = req.query;
+
+    if (all === 'true' && isHR) {
+      const users = await User.find({ status: { $ne: 'INACTIVE' } })
+        .select('_id name email department role jobPosition photo employeeType contractEndDate contractDuration status')
+        .sort({ name: 1 });
+      const activeTypes = await TimeOffType.find({ status: 'Active' });
+
+      const staffBalances = await Promise.all(
+        users.map(async (u) => {
+          const balances = await Promise.all(
+            activeTypes.map((t) => getEmployeeLeaveBalance(u._id, t._id))
+          );
+          const totalAllocated = balances.reduce((sum, b) => sum + (b.allocated || 0), 0);
+          const totalUsed = balances.reduce((sum, b) => sum + (b.used || 0), 0);
+
+          // Direct aggregation of pending requests for this employee
+          const pendingReqs = await TimeOffRequest.find({
+            employee: u._id,
+            status: { $in: ['Pending', 'Pending Approval'] }
+          });
+          const totalPending = pendingReqs.reduce((sum, r) => sum + (Number(r.duration) || Number(r.days) || 0), 0);
+          const totalRemaining = Math.max(0, totalAllocated - totalUsed);
+
+          const resolvedEmpType = (u.employeeType === 'Contract' && (u.contractEndDate || u.contractDuration))
+            ? 'Contract'
+            : (u.employeeType === 'Contract' && !u.contractEndDate && !u.contractDuration ? 'Permanent' : (u.employeeType || 'Permanent'));
+
+          return {
+            employee: {
+              _id: u._id.toString(),
+              id: u._id.toString(),
+              name: u.name,
+              email: u.email,
+              department: u.department || 'General',
+              role: u.role,
+              jobPosition: u.jobPosition || 'Employee',
+              photo: u.photo,
+              employeeType: resolvedEmpType,
+              status: u.status
+            },
+            totalAllocated,
+            totalUsed,
+            totalPending,
+            totalRemaining,
+            balances
+          };
+        })
+      );
+
+      return res.status(200).json({ success: true, staffBalances });
+    }
+
+    const targetEmpId = employeeId || req.user.id || req.user._id;
+
     // Non-HR users can only query their own balances
-    if (!isHRorAdmin(req.user.role) && employeeId.toString() !== (req.user.id || req.user._id).toString()) {
+    if (!isHR && targetEmpId.toString() !== (req.user.id || req.user._id).toString()) {
       return res.status(403).json({ success: false, message: 'Unauthorized to view other employee balances.' });
     }
 
-    const balances = await getAllEmployeeBalances(employeeId);
+    const balances = await getAllEmployeeBalances(targetEmpId);
     return res.status(200).json({ success: true, balances });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -342,8 +396,11 @@ const approveAllocation = async (req, res) => {
     const allocation = await Allocation.findById(id);
     if (!allocation) return res.status(404).json({ success: false, message: 'Allocation not found.' });
 
-    if (allocation.status === 'Approved') {
-      return res.status(400).json({ success: false, message: 'Allocation is already approved.' });
+    if (allocation.status !== 'Pending Approval' && allocation.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve: Allocation is already ${allocation.status} and cannot be modified.`
+      });
     }
 
     const previousStatus = allocation.status;
@@ -383,7 +440,12 @@ const refuseAllocation = async (req, res) => {
     const allocation = await Allocation.findById(id);
     if (!allocation) return res.status(404).json({ success: false, message: 'Allocation not found.' });
 
-    const previousStatus = allocation.status;
+    if (allocation.status !== 'Pending Approval' && allocation.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot refuse: Allocation is already ${allocation.status} and cannot be modified.`
+      });
+    }
     allocation.status = 'Refused';
     allocation.refusalReason = refusalReason || 'Refused by HR Manager';
     allocation.auditTrail.push({
@@ -544,8 +606,11 @@ const approveRequest = async (req, res) => {
     const request = await TimeOffRequest.findById(id);
     if (!request) return res.status(404).json({ success: false, message: 'Leave request not found.' });
 
-    if (request.status === 'Approved') {
-      return res.status(400).json({ success: false, message: 'Request is already approved.' });
+    if (request.status !== 'Pending' && request.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve request: Leave request is already ${request.status} and cannot be modified.`
+      });
     }
 
     // Verify balance again at approval time
@@ -594,6 +659,13 @@ const refuseRequest = async (req, res) => {
     const request = await TimeOffRequest.findById(id);
     if (!request) return res.status(404).json({ success: false, message: 'Leave request not found.' });
 
+    if (request.status !== 'Pending' && request.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot refuse request: Leave request is already ${request.status} and cannot be modified.`
+      });
+    }
+
     const previousStatus = request.status;
     request.status = 'Refused';
     request.rejectionReason = rejectionReason || 'Refused by HR';
@@ -630,8 +702,11 @@ const cancelRequest = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized.' });
     }
 
-    if (request.status === 'Cancelled') {
-      return res.status(400).json({ success: false, message: 'Request is already cancelled.' });
+    if (request.status !== 'Pending' && request.status !== 'Draft') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel request: Leave request is already ${request.status} and cannot be modified.`
+      });
     }
 
     const previousStatus = request.status;
@@ -639,21 +714,20 @@ const cancelRequest = async (req, res) => {
     request.cancellationReason = cancellationReason || 'Cancelled by user';
     request.cancelledDate = new Date();
 
-    const wasApproved = previousStatus === 'Approved';
     request.auditTrail.push({
       action: 'REQUEST_CANCELLED',
       performedBy: req.user.id || req.user._id,
       performedByName: req.user.name,
       previousStatus,
       newStatus: 'Cancelled',
-      note: `Cancelled by ${req.user.name}. ${wasApproved ? `Restored ${request.duration} ${request.unit} back to balance.` : 'No balance impact.'}`
+      note: `Cancelled by ${req.user.name}. ${cancellationReason ? 'Reason: ' + cancellationReason : 'No reason provided.'}`
     });
 
     await request.save();
 
     return res.status(200).json({
       success: true,
-      message: `Leave request cancelled.${wasApproved ? ' Deducted balance has been restored.' : ''}`,
+      message: 'Leave request cancelled.',
       request
     });
   } catch (error) {

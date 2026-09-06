@@ -33,6 +33,12 @@ const createUserSchema = Joi.object({
   }),
   department: Joi.string().trim().optional().allow(''),
   jobPosition: Joi.string().trim().optional().allow(''),
+  salary: Joi.number().min(0).optional().messages({
+    'number.base': 'Monthly salary must be a valid number.',
+    'number.min': 'Monthly salary cannot be negative.'
+  }),
+  wage: Joi.number().min(0).optional(),
+  photo: Joi.string().allow('', null).optional(),
   employeeType: Joi.string().valid('Permanent', 'Contract').optional(),
   contractStartDate: Joi.string().trim().optional().allow(''),
   contractEndDate: Joi.string().trim().optional().allow('')

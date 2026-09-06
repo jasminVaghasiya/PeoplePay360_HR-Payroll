@@ -1,8 +1,10 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const authRepository = require('./auth.repository');
-const { userRoles } = require('./auth.model');
+const { User, userRoles } = require('./auth.model');
 const { canCreateRole, JWT_SECRET, JWT_REFRESH_SECRET } = require('./auth.middleware');
+const { getIsConnected } = require('../../config/db');
+const contractRepository = require('../contracts/contract.repository');
 
 const crypto = require('crypto');
 
@@ -129,26 +131,67 @@ class AuthService {
     }
 
     // 2. Find refresh token in DB/repository
-    const storedToken = await authRepository.findRefreshToken(oldRefreshToken);
+    let storedToken = await authRepository.findRefreshToken(oldRefreshToken);
     if (!storedToken) {
-      throw { statusCode: 401, message: 'Refresh token not recognized or already used.' };
+      // Graceful session recovery: If token signature is cryptographically valid and unexpired
+      const user = (await authRepository.findById(decoded.id)) || (await authRepository.findByEmail(decoded.email));
+      if (!user || user.status === 'INACTIVE') {
+        throw { statusCode: 401, message: 'Session expired or user inactive. Please log in again.' };
+      }
+
+      const newAccessToken = this.generateAccessToken(user);
+      const newRefreshToken = this.generateRefreshToken(user);
+
+      const newAccessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_EXPIRY_MS);
+      const newRefreshExpiresAt = new Date();
+      newRefreshExpiresAt.setDate(newRefreshExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
+
+      await authRepository.saveAccessToken({
+        userId: user._id || user.id,
+        userEmail: user.email,
+        token: newAccessToken,
+        expiresAt: newAccessExpiresAt,
+        revoked: false,
+        ipAddress,
+        userAgent
+      });
+
+      await authRepository.saveRefreshToken({
+        userId: user._id || user.id,
+        userEmail: user.email,
+        token: newRefreshToken,
+        expiresAt: newRefreshExpiresAt,
+        revoked: false,
+        ipAddress,
+        userAgent
+      });
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      };
     }
 
     // 3. Check if token is revoked or expired
     if (storedToken.revoked) {
-      // Concurrency Grace Period (3s): If token was recently rotated, return existing replacement pair gracefully
+      // Concurrency Grace Period (30s): If token was recently rotated, return existing active replacement pair
       const rotatedTime = storedToken.rotatedAt ? new Date(storedToken.rotatedAt).getTime() : 0;
-      const isWithinGracePeriod = rotatedTime > 0 && Date.now() - rotatedTime < 3000;
+      const isWithinGracePeriod = rotatedTime > 0 && Date.now() - rotatedTime < 30000;
 
       if (isWithinGracePeriod && storedToken.replacedByToken) {
-        const replacementRefreshToken = await authRepository.findRefreshToken(storedToken.replacedByToken);
-        if (replacementRefreshToken) {
-          const user = await authRepository.findById(decoded.id);
+        let currentReplacement = await authRepository.findRefreshToken(storedToken.replacedByToken);
+        // Follow replacement chain if multiple rapid rotations occurred within grace period
+        while (currentReplacement && currentReplacement.revoked && currentReplacement.replacedByToken) {
+          currentReplacement = await authRepository.findRefreshToken(currentReplacement.replacedByToken);
+        }
+
+        if (currentReplacement && !currentReplacement.revoked) {
+          const user = (await authRepository.findById(decoded.id)) || (await authRepository.findByEmail(decoded.email));
           if (user && user.status !== 'INACTIVE') {
             const activeAccessToken = this.generateAccessToken(user);
             return {
               accessToken: activeAccessToken,
-              refreshToken: replacementRefreshToken.token
+              refreshToken: currentReplacement.token
             };
           }
         }
@@ -165,7 +208,7 @@ class AuthService {
     }
 
     // 4. Fetch associated user
-    const user = await authRepository.findById(decoded.id);
+    const user = (await authRepository.findById(decoded.id)) || (await authRepository.findByEmail(decoded.email));
     if (!user || user.status === 'INACTIVE') {
       throw { statusCode: 403, message: 'User account not active' };
     }
@@ -218,7 +261,7 @@ class AuthService {
     return true;
   }
 
-  async createUser(creatorUser, { name, email, password, role, department, jobPosition, photo, employeeType, contractStartDate, contractEndDate, contractDuration }) {
+  async createUser(creatorUser, { name, email, password, role, department, jobPosition, photo, employeeType, contractStartDate, contractEndDate, contractDuration, salary, wage }) {
     if (!name || !email || !password || !role) {
       throw { statusCode: 400, message: 'Name, email, password, and role are required fields' };
     }
@@ -249,6 +292,11 @@ class AuthService {
     const endDate = empType === 'Contract' ? (contractEndDate || '').trim() : '';
     const durationStr = startDate && endDate ? `${startDate} to ${endDate}` : (contractDuration || '').trim();
 
+    // Parse salary / wage (Default fallback: 50,000 INR if not provided)
+    const rawSalary = salary !== undefined ? salary : wage;
+    const parsedSalary = Number(rawSalary);
+    const monthlySalary = !isNaN(parsedSalary) && parsedSalary >= 0 ? parsedSalary : 50000;
+
     const newUser = await authRepository.create({
       name: name.trim(),
       email: cleanEmail,
@@ -256,6 +304,7 @@ class AuthService {
       role,
       department: department || 'General',
       jobPosition: jobPosition || 'Employee',
+      salary: monthlySalary,
       employeeType: empType,
       contractStartDate: startDate,
       contractEndDate: endDate,
@@ -265,6 +314,35 @@ class AuthService {
       createdByName: creatorUser.name
     });
 
+    // Automatically create/bind Active Employment Contract for Payroll & HR calculations
+    try {
+      const initials = (name.trim().split(' ').map((n) => n[0]).join('') || 'EMP').toUpperCase().slice(0, 3);
+      const userRefId = (newUser._id || newUser.id || Date.now()).toString().slice(-4).toUpperCase();
+      const contractRef = `CON-2026-${initials}-${userRefId}`;
+
+      await contractRepository.create({
+        contractRef,
+        contractName: `${newUser.name} - Employment Agreement`,
+        employeeId: newUser._id || newUser.id,
+        employeeName: newUser.name,
+        employeeEmail: newUser.email,
+        employeeType: empType,
+        startDate: startDate || new Date().toISOString().split('T')[0],
+        endDate: endDate || '',
+        department: newUser.department || 'General',
+        jobPosition: newUser.jobPosition || 'Employee',
+        wage: monthlySalary,
+        wageType: 'Monthly',
+        salaryStructure: empType === 'Contract' ? 'Contractor' : 'Regular Salary',
+        salaryStructureName: empType === 'Contract' ? 'Contractor Fixed Structure' : 'Standard Employee Salary Structure',
+        status: 'RUNNING',
+        notes: `Contract initialized automatically upon employee onboarding with monthly wage ₹${monthlySalary.toLocaleString()}`,
+        createdByName: creatorUser.name || 'HR Operations'
+      });
+    } catch (contractErr) {
+      console.warn('[AuthService] Notice: Could not auto-generate contract for employee:', contractErr.message);
+    }
+
     return newUser;
   }
 
@@ -272,12 +350,44 @@ class AuthService {
     return await authRepository.findAll(query);
   }
 
-  async toggleUserStatus(userId) {
-    const updatedUser = await authRepository.updateStatus(userId);
-    if (!updatedUser) {
+  async toggleUserStatus(actorUser, userId) {
+    const targetUser = await authRepository.findById(userId);
+    if (!targetUser) {
       throw { statusCode: 404, message: 'User not found' };
     }
+    if (targetUser.role === 'Admin') {
+      throw { statusCode: 403, message: 'Forbidden: System Admin account cannot be deactivated' };
+    }
+    if (actorUser) {
+      const isSelf = actorUser.id === userId || 
+                     actorUser._id?.toString() === userId || 
+                     actorUser.email?.toLowerCase().trim() === targetUser.email?.toLowerCase().trim();
+      if (isSelf) {
+        throw { statusCode: 403, message: 'Forbidden: You cannot deactivate your own account' };
+      }
+    }
+    const updatedUser = await authRepository.updateStatus(userId);
     return updatedUser;
+  }
+
+  async deleteUser(actorUser, userId) {
+    const targetUser = await authRepository.findById(userId);
+    if (!targetUser) {
+      throw { statusCode: 404, message: 'User not found' };
+    }
+    if (targetUser.role === 'Admin') {
+      throw { statusCode: 403, message: 'Forbidden: System Admin account cannot be deleted' };
+    }
+    if (actorUser) {
+      const isSelf = actorUser.id === userId || 
+                     actorUser._id?.toString() === userId || 
+                     actorUser.email?.toLowerCase().trim() === targetUser.email?.toLowerCase().trim();
+      if (isSelf) {
+        throw { statusCode: 403, message: 'Forbidden: You cannot delete your own account' };
+      }
+    }
+    await authRepository.deleteById(userId);
+    return { success: true, message: `Employee ${targetUser.name} deleted successfully` };
   }
 
   async getUserById(userId) {
@@ -294,17 +404,19 @@ class AuthService {
     }
 
     if (newRole === 'Admin' || newRole === 'admin') {
-      throw { statusCode: 403, message: 'Forbidden: Admin role cannot be assigned to any user' };
+      if (creatorUser.role !== 'Admin') {
+        throw { statusCode: 403, message: 'Forbidden: Only an Admin can assign the Admin role' };
+      }
     }
 
     if (!userRoles.includes(newRole)) {
-      throw { statusCode: 400, message: Invalid role '' };
+      throw { statusCode: 400, message: `Invalid role '${newRole}'` };
     }
 
     if (!canCreateRole(creatorUser.role, newRole)) {
       throw {
         statusCode: 403,
-        message: Forbidden: Your role () does not have permission to assign role ''
+        message: `Forbidden: Your role (${creatorUser.role}) does not have permission to assign role '${newRole}'`
       };
     }
 
@@ -317,7 +429,118 @@ class AuthService {
       throw { statusCode: 403, message: 'Forbidden: System Admin role cannot be altered' };
     }
 
+    const isSelf = creatorUser.id === targetUserId || 
+                   creatorUser._id?.toString() === targetUserId || 
+                   creatorUser.email?.toLowerCase().trim() === targetUser.email?.toLowerCase().trim();
+    if (isSelf) {
+      throw { statusCode: 403, message: 'Forbidden: You cannot change your own role' };
+    }
+
+    if (targetUser.employeeType === 'Contract') {
+      throw {
+        statusCode: 403,
+        message: 'Forbidden: Role cannot be modified for contract-based employees'
+      };
+    }
+
     const updatedUser = await authRepository.updateRole(targetUserId, newRole);
+    return updatedUser;
+  }
+
+  async updateUser(creatorUser, targetUserId, payload) {
+    const targetUser = await authRepository.findById(targetUserId);
+    if (!targetUser) {
+      throw { statusCode: 404, message: 'User not found' };
+    }
+
+    if (targetUser.role === 'Admin') {
+      throw { statusCode: 403, message: 'Forbidden: System Admin account cannot be modified or updated' };
+    }
+
+    const isSelf = creatorUser.id === targetUserId || 
+                   creatorUser._id?.toString() === targetUserId || 
+                   creatorUser.email?.toLowerCase().trim() === targetUser.email?.toLowerCase().trim();
+    if (isSelf) {
+      throw { statusCode: 403, message: 'Forbidden: You cannot modify your own administrative account via employee management' };
+    }
+
+    const updateData = {};
+    if (payload.name && payload.name.trim()) updateData.name = payload.name.trim();
+    if (payload.email && payload.email.trim()) updateData.email = payload.email.toLowerCase().trim();
+    if (payload.department) updateData.department = payload.department;
+    if (payload.jobPosition) updateData.jobPosition = payload.jobPosition;
+    if (payload.salary !== undefined && payload.salary !== null && payload.salary !== '') {
+      updateData.salary = Number(payload.salary);
+    }
+    if (payload.photo !== undefined) updateData.photo = payload.photo;
+
+    // Handle Employee Type & Contract Dates
+    const empType = payload.employeeType || targetUser.employeeType || 'Permanent';
+    updateData.employeeType = empType;
+
+    if (empType === 'Contract') {
+      const start = payload.contractStartDate || targetUser.contractStartDate || new Date().toISOString().split('T')[0];
+      const end = payload.contractEndDate !== undefined ? payload.contractEndDate : targetUser.contractEndDate;
+      updateData.contractStartDate = start;
+      updateData.contractEndDate = end || '';
+      updateData.contractDuration = (start && end) ? `${start} to ${end}` : 'Active Contract';
+    } else {
+      updateData.contractStartDate = '';
+      updateData.contractEndDate = '';
+      updateData.contractDuration = '';
+    }
+
+    // Handle Password Update if provided
+    if (payload.password && payload.password.trim()) {
+      updateData.password = await bcrypt.hash(payload.password.trim(), 10);
+    }
+
+    // Role Change Authorization
+    if (payload.role && payload.role !== targetUser.role) {
+      if (targetUser.role === 'Admin') {
+        throw { statusCode: 403, message: 'Forbidden: System Admin role cannot be altered' };
+      }
+      if (empType === 'Contract' || targetUser.employeeType === 'Contract') {
+        throw {
+          statusCode: 403,
+          message: 'Forbidden: Role cannot be modified for contract-based employees'
+        };
+      }
+      if (!canCreateRole(creatorUser.role, payload.role)) {
+        throw {
+          statusCode: 403,
+          message: `Forbidden: Your role (${creatorUser.role}) does not have permission to assign role '${payload.role}'`
+        };
+      }
+      updateData.role = payload.role;
+    }
+
+    const updatedUser = await authRepository.updateUser(targetUserId, updateData);
+
+    // Sync active contract record if one exists
+    try {
+      if (getIsConnected()) {
+        const Contract = require('../contracts/contract.model');
+        const userEmail = (updateData.email || targetUser.email).toLowerCase();
+        await Contract.updateMany(
+          { employeeEmail: userEmail, status: 'RUNNING' },
+          {
+            $set: {
+              employeeName: updateData.name || targetUser.name,
+              department: updateData.department || targetUser.department,
+              jobPosition: updateData.jobPosition || targetUser.jobPosition,
+              wage: updateData.salary !== undefined ? updateData.salary : targetUser.salary,
+              employeeType: empType,
+              startDate: updateData.contractStartDate || targetUser.contractStartDate || undefined,
+              endDate: updateData.contractEndDate || undefined
+            }
+          }
+        );
+      }
+    } catch (syncErr) {
+      console.warn('[AuthService] Notice: Could not sync contract record on user update:', syncErr.message);
+    }
+
     return updatedUser;
   }
 }

@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CreateUserModal } from './CreateUserModal';
 import { UserProfileDetailModal } from './UserProfileDetailModal';
 import CustomDropdown from '../../components/CustomDropdown';
+import { UserDisplayCell } from '../../components/UserDisplayCell';
+import { StatusToggleSwitch } from '../../components/StatusToggleSwitch';
 import {
   UserPlus,
   Search,
@@ -19,8 +21,11 @@ import {
   ShieldCheck,
   Settings,
   Edit,
+  MoreVertical,
   Trash2,
+  AlertTriangle,
   Calendar,
+  DollarSign,
   ChevronsLeft,
   ChevronLeft,
   ChevronRight,
@@ -28,7 +33,7 @@ import {
 } from 'lucide-react';
 
 export const UserManagementPage = () => {
-  const { user: currentUser, fetchUsers, toggleUserStatus, canCreateRole } = useAuth();
+  const { user: currentUser, fetchUsers, toggleUserStatus, deleteUser, canCreateRole } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -38,14 +43,25 @@ export const UserManagementPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUserForDetail, setSelectedUserForDetail] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [activeDropdownUserId, setActiveDropdownUserId] = useState(null);
   const [viewMode, setViewMode] = useState('list');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  useEffect(() => {
+    const handleGlobalClick = () => setActiveDropdownUserId(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
   const loadData = async () => {
     setLoading(true);
-    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter, employeeType: employeeTypeFilter });
-    if (data.success) {
+    // Fetch user directory based on search, role, and status.
+    // Employee type filtering is executed dynamically in useMemo for 100% reliable, zero-latency instant results.
+    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter });
+    if (data.success && Array.isArray(data.users)) {
       setUsers(data.users);
     }
     setLoading(false);
@@ -53,7 +69,13 @@ export const UserManagementPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [search, roleFilter, statusFilter, employeeTypeFilter]);
+  }, [search, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    if (users.length === 0) {
+      loadData();
+    }
+  }, [employeeTypeFilter]);
 
   const handleToggleStatus = async (e, userId) => {
     e.stopPropagation();
@@ -66,6 +88,38 @@ export const UserManagementPage = () => {
   const handleOpenUserDetail = (u) => {
     setSelectedUserForDetail(u);
     setIsDetailModalOpen(true);
+  };
+
+  const handleOpenEditUser = (e, u) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    setSelectedUserForEdit(u);
+    setIsEditModalOpen(true);
+  };
+
+  const isSelfUser = (u) => {
+    if (!u || !currentUser) return false;
+    const currentId = currentUser.id || currentUser._id;
+    const targetId = u.id || u._id;
+    const matchId = currentId && targetId && String(currentId) === String(targetId);
+    const matchEmail = u.email && currentUser.email && u.email.toLowerCase().trim() === currentUser.email.toLowerCase().trim();
+    return Boolean(matchId || matchEmail);
+  };
+
+  const canEditUser = (u) => {
+    if (!u) return false;
+    // Do not give edit option to itself
+    if (isSelfUser(u)) return false;
+    // For admin not give option to change or update
+    if (u.role === 'Admin') return false;
+    // Role authority check
+    return currentUser?.role === 'Admin' || currentUser?.role === 'HR Payroll Manager' || currentUser?.role === 'HR Manager';
+  };
+
+  const canDeactivateUser = (u) => {
+    if (!u) return false;
+    if (isSelfUser(u)) return false;
+    if (u.role === 'Admin') return false;
+    return currentUser?.role === 'Admin' || currentUser?.role === 'HR Payroll Manager' || currentUser?.role === 'HR Manager';
   };
 
   const getInitials = (name) => {
@@ -94,12 +148,34 @@ export const UserManagementPage = () => {
 
   const canCreateNew = canCreateRole('Employee');
 
-  // Pagination logic
-  const totalPages = Math.ceil(users.length / itemsPerPage) || 1;
-  const paginatedUsers = users.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Client-side filtering ensures instant feedback and complete alignment with active filters
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (roleFilter && u.role !== roleFilter) return false;
+      if (statusFilter && u.status !== statusFilter) return false;
+      if (employeeTypeFilter) {
+        const isContractUser = (u.employeeType || '').toLowerCase() === 'contract' &&
+          Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+        const resolvedType = isContractUser ? 'contract' : 'permanent';
+        if (employeeTypeFilter.toLowerCase() !== resolvedType) return false;
+      }
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        const matchesName = u.name?.toLowerCase().includes(q);
+        const matchesEmail = u.email?.toLowerCase().includes(q);
+        const matchesDept = u.department?.toLowerCase().includes(q);
+        if (!matchesName && !matchesEmail && !matchesDept) return false;
+      }
+      return true;
+    });
+  }, [users, roleFilter, statusFilter, employeeTypeFilter, search]);
+
+  // Pagination logic on filtered users
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage) || 1;
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="responsive-page-container">
       
       {/* Top Header & Actions */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
@@ -113,7 +189,7 @@ export const UserManagementPage = () => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap' }}>
           <button
             onClick={() => handleOpenUserDetail(currentUser)}
             className="btn-secondary"
@@ -133,7 +209,7 @@ export const UserManagementPage = () => {
       </div>
 
       {/* Filter & Search Toolbar */}
-      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 50 }}>
+      <div className="glass-panel toolbar-flex-wrap" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', position: 'relative', zIndex: 50 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1, minWidth: '280px' }}>
           <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
             <Search size={18} color="#64748B" style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)' }} />
@@ -235,49 +311,55 @@ export const UserManagementPage = () => {
         <div style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)' }}>Loading users directory...</div>
       ) : viewMode === 'list' ? (
         <div className="glass-panel" style={{ padding: '0', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          <div className="data-table-container">
-            <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div className="data-table-container user-table-container" style={{ width: '100%' }}>
+            <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
               <thead>
                 <tr style={{ background: 'rgba(15, 23, 42, 0.7)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', textTransform: 'none' }}>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <User size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <User size={14} color="#94A3B8" />
                       <span>Employee</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Briefcase size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Briefcase size={14} color="#94A3B8" />
                       <span>Role</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <FileText size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <DollarSign size={14} color="#34D399" />
+                      <span>Monthly Salary</span>
+                    </div>
+                  </th>
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <FileText size={14} color="#94A3B8" />
                       <span>Type / Contract</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Building size={15} color="#94A3B8" />
-                      <span>Department & Position</span>
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Building size={14} color="#94A3B8" />
+                      <span>Dept & Position</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <ShieldCheck size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <ShieldCheck size={14} color="#94A3B8" />
                       <span>Status</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <User size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <User size={14} color="#94A3B8" />
                       <span>Created By</span>
                     </div>
                   </th>
-                  <th style={{ padding: '1rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, textAlign: 'right' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.4rem' }}>
-                      <Settings size={15} color="#94A3B8" />
+                  <th style={{ padding: '0.75rem 0.55rem', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                      <Settings size={14} color="#94A3B8" />
                       <span>Actions</span>
                     </div>
                   </th>
@@ -286,6 +368,8 @@ export const UserManagementPage = () => {
               <tbody>
                 {paginatedUsers.map((u) => {
                   const roleStyle = getRoleBadgeStyle(u.role);
+                  const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+                    Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
                   return (
                     <tr
                       key={u.id || u._id}
@@ -297,51 +381,29 @@ export const UserManagementPage = () => {
                       }}
                       className="table-row-hover"
                     >
-                      {/* 1. Employee Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                          {u.photo ? (
-                            <img
-                              src={u.photo}
-                              alt={u.name}
-                              style={{ width: '42px', height: '42px', borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(124, 58, 237, 0.4)' }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: '42px',
-                                height: '42px',
-                                borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #7C3AED, #9333EA)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#fff',
-                                fontWeight: 700,
-                                fontSize: '0.92rem',
-                                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.3)'
-                              }}
-                            >
-                              {getInitials(u.name)}
-                            </div>
-                          )}
-                          <div>
-                            <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.95rem' }}>{u.name}</div>
-                            <div style={{ fontSize: '0.82rem', color: '#94A3B8', marginTop: '0.1rem' }}>{u.email}</div>
-                          </div>
-                        </div>
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
+                        <UserDisplayCell
+                          name={u.name}
+                          email={u.email}
+                          photo={u.photo}
+                          role={u.role}
+                          department={u.department}
+                          employeeType={isContract ? 'Contract' : 'Permanent'}
+                          size={36}
+                        />
                       </td>
 
                       {/* 2. Role Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
                         <span
                           style={{
-                            fontSize: '0.72rem',
+                            fontSize: '0.68rem',
                             fontWeight: 800,
-                            padding: '0.35rem 0.8rem',
-                            borderRadius: '12px',
+                            padding: '0.22rem 0.55rem',
+                            borderRadius: '10px',
                             textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
+                            letterSpacing: '0.03em',
+                            whiteSpace: 'nowrap',
                             display: 'inline-block',
                             ...roleStyle
                           }}
@@ -350,17 +412,36 @@ export const UserManagementPage = () => {
                         </span>
                       </td>
 
-                      {/* 3. Type / Contract Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                          {u.employeeType === 'Contract' ? (
+                      {/* 3. Salary Column */}
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}>
+                          <span style={{
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            color: '#34D399',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '6px',
+                            letterSpacing: '0.02em'
+                          }}>
+                            ₹{Number(u.salary || 50000).toLocaleString()}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>/mo</span>
+                        </div>
+                      </td>
+
+                      {/* 4. Type / Contract Column */}
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                          {isContract ? (
                             <>
                               <span
                                 style={{
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.7rem',
                                   fontWeight: 700,
-                                  padding: '0.2rem 0.65rem',
-                                  borderRadius: '6px',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: '5px',
                                   display: 'inline-block',
                                   width: 'fit-content',
                                   background: 'rgba(245, 158, 11, 0.18)',
@@ -370,19 +451,19 @@ export const UserManagementPage = () => {
                               >
                                 Contract
                               </span>
-                              <span style={{ fontSize: '0.76rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
-                                <Calendar size={13} color="#FBBF24" />
-                                {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} – ${u.contractEndDate}` : (u.contractDuration || '05 Sep 2026 – 18 Sep 2026')}
+                              <span style={{ fontSize: '0.7rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}>
+                                <Calendar size={11} color="#FBBF24" />
+                                {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} – ${u.contractEndDate}` : (u.contractDuration || 'Fixed-Term')}
                               </span>
                             </>
                           ) : (
                             <>
                               <span
                                 style={{
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.7rem',
                                   fontWeight: 700,
-                                  padding: '0.2rem 0.65rem',
-                                  borderRadius: '6px',
+                                  padding: '0.12rem 0.45rem',
+                                  borderRadius: '5px',
                                   display: 'inline-block',
                                   width: 'fit-content',
                                   background: 'rgba(16, 185, 129, 0.15)',
@@ -392,105 +473,221 @@ export const UserManagementPage = () => {
                               >
                                 Permanent
                               </span>
-                              <span style={{ fontSize: '0.76rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                <Calendar size={13} color="#64748B" />
-                                —
+                              <span style={{ fontSize: '0.7rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <Calendar size={11} color="#64748B" />
+                                Full-Time
                               </span>
                             </>
                           )}
                         </div>
                       </td>
 
-                      {/* 4. Department & Position Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
-                        <div style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>{u.department || 'Engineering'}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94A3B8', marginTop: '0.15rem' }}>{u.jobPosition || 'Employee'}</div>
+                      {/* 5. Department & Position Column */}
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
+                        <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.84rem', whiteSpace: 'nowrap' }}>
+                          {u.department || 'Engineering'}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: '#94A3B8', marginTop: '0.05rem', whiteSpace: 'nowrap' }}>
+                          {u.jobPosition || 'Employee'}
+                        </div>
                       </td>
 
-                      {/* 5. Status Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
+                      {/* 6. Status Column */}
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
                         <span
                           style={{
-                            fontSize: '0.78rem',
+                            fontSize: '0.72rem',
                             fontWeight: 700,
-                            padding: '0.3rem 0.75rem',
-                            borderRadius: '14px',
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '12px',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '0.35rem',
+                            gap: '0.25rem',
+                            whiteSpace: 'nowrap',
                             background: u.status === 'ACTIVE' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                             border: u.status === 'ACTIVE' ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)',
                             color: u.status === 'ACTIVE' ? '#34D399' : '#F87171'
                           }}
                         >
-                          {u.status === 'ACTIVE' ? <CheckCircle size={13} /> : <XCircle size={13} />}
+                          {u.status === 'ACTIVE' ? <CheckCircle size={11} /> : <XCircle size={11} />}
                           <span>{u.status === 'ACTIVE' ? 'Active' : 'Inactive'}</span>
                         </span>
                       </td>
 
-                      {/* 6. Created By Column */}
-                      <td style={{ padding: '1rem 1.25rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                          <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(124, 58, 237, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <User size={13} color="#C084FC" />
+                      {/* 7. Created By Column */}
+                      <td style={{ padding: '0.65rem 0.55rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                          <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'rgba(124, 58, 237, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <User size={11} color="#C084FC" />
                           </div>
-                          <span style={{ fontSize: '0.85rem', color: '#E2E8F0', fontWeight: 500 }}>
+                          <span style={{ fontSize: '0.78rem', color: '#E2E8F0', fontWeight: 500 }}>
                             {u.createdByName || 'Admin'}
                           </span>
                         </div>
                       </td>
 
-                      {/* 7. Actions Column */}
-                      <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                          <button
-                            onClick={() => handleOpenUserDetail(u)}
-                            style={{
-                              background: 'rgba(255, 255, 255, 0.06)',
-                              border: '1px solid rgba(255, 255, 255, 0.12)',
-                              color: '#E2E8F0',
-                              padding: '0.35rem 0.7rem',
-                              borderRadius: '8px',
-                              fontSize: '0.8rem',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              transition: 'all 0.15s ease'
-                            }}
-                            title="Edit & View Profile Details"
-                          >
-                            <Edit size={13} />
-                            <span>Edit</span>
-                          </button>
-
-                          {(currentUser?.role === 'Admin' || currentUser?.role === 'HR Payroll Manager') && u.email !== currentUser?.email && (
+                      {/* 8. Actions Column with 3-Dots Options Menu */}
+                      <td style={{ padding: '0.65rem 0.55rem', textAlign: 'right', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem' }}>
+                          {canEditUser(u) && (
                             <button
-                              onClick={(e) => handleToggleStatus(e, u.id || u._id)}
+                              onClick={(e) => handleOpenEditUser(e, u)}
                               style={{
-                                background: 'rgba(239, 68, 68, 0.85)',
-                                border: 'none',
-                                color: '#fff',
-                                width: '30px',
-                                height: '30px',
-                                borderRadius: '8px',
+                                background: 'rgba(255, 255, 255, 0.06)',
+                                border: '1px solid rgba(255, 255, 255, 0.12)',
+                                color: '#E2E8F0',
+                                padding: '0.25rem 0.55rem',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'pointer',
+                                gap: '0.25rem',
                                 transition: 'all 0.15s ease'
                               }}
-                              title={u.status === 'ACTIVE' ? 'Deactivate User Account' : 'Activate User Account'}
+                              title="Edit Employee Profile"
                             >
-                              <Trash2 size={14} />
+                              <Edit size={12} />
+                              <span>Edit</span>
                             </button>
+                          )}
+
+                          {(canEditUser(u) || canDeactivateUser(u)) ? (
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveDropdownUserId(activeDropdownUserId === (u.id || u._id) ? null : (u.id || u._id));
+                                }}
+                                style={{
+                                  background: activeDropdownUserId === (u.id || u._id) ? 'rgba(124, 58, 237, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                                  border: activeDropdownUserId === (u.id || u._id) ? '1px solid #7C3AED' : '1px solid rgba(255, 255, 255, 0.14)',
+                                  color: '#E2E8F0',
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '6px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                title="Actions & Options"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+
+                              {/* Dropdown Options Menu */}
+                              {activeDropdownUserId === (u.id || u._id) && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: 'calc(100% + 4px)',
+                                    background: '#1A162B',
+                                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                                    borderRadius: '10px',
+                                    boxShadow: '0 12px 30px rgba(0, 0, 0, 0.65)',
+                                    padding: '0.35rem',
+                                    minWidth: '200px',
+                                    zIndex: 100,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.2rem',
+                                    textAlign: 'left'
+                                  }}
+                                >
+                                  {canEditUser(u) && (
+                                    <button
+                                      onClick={(e) => {
+                                        setActiveDropdownUserId(null);
+                                        handleOpenEditUser(e, u);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.6rem',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#E2E8F0',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <Edit size={14} color="#A78BFA" />
+                                      <span>Edit Profile</span>
+                                    </button>
+                                  )}
+
+                                  {canDeactivateUser(u) && (
+                                    <button
+                                      onClick={(e) => {
+                                        setActiveDropdownUserId(null);
+                                        handleToggleStatus(e, u.id || u._id);
+                                      }}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '0.5rem 0.75rem',
+                                        borderRadius: '6px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: u.status === 'ACTIVE' ? '#FBBF24' : '#34D399',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        cursor: 'pointer',
+                                        width: '100%',
+                                        transition: 'background 0.15s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                        {u.status === 'ACTIVE' ? <XCircle size={14} color="#FBBF24" /> : <CheckCircle size={14} color="#34D399" />}
+                                        <span>{u.status === 'ACTIVE' ? 'Deactivate Account' : 'Activate Account'}</span>
+                                      </div>
+                                      <StatusToggleSwitch
+                                        isActive={u.status === 'ACTIVE'}
+                                        onToggle={(e) => {
+                                          setActiveDropdownUserId(null);
+                                          handleToggleStatus(e, u.id || u._id);
+                                        }}
+                                        size="sm"
+                                      />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontStyle: 'italic', paddingRight: '0.35rem' }}>
+                              {u.role === 'Admin' ? 'Protected' : 'Current User'}
+                            </span>
                           )}
                         </div>
                       </td>
                     </tr>
                   );
                 })}
+                {paginatedUsers.length === 0 && (
+                  <tr>
+                    <td colSpan="6" style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <Filter size={32} color="#64748B" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#CBD5E1' }}>No employees match the selected filters</div>
+                      <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Try selecting "All Employee Types" or clearing your search term.</div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -511,7 +708,7 @@ export const UserManagementPage = () => {
             }}
           >
             <div>
-              Showing {users.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, users.length)} of {users.length} employees
+              Showing {filteredUsers.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} employees
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -595,56 +792,200 @@ export const UserManagementPage = () => {
       ) : (
         /* Kanban View */
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          {users.map((u) => (
-            <div
-              key={u.id || u._id}
-              onClick={() => handleOpenUserDetail(u)}
-              className="glass-panel glass-panel-interactive"
-              style={{ padding: '1.5rem', cursor: 'pointer' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.25rem 0.7rem', borderRadius: '10px', ...getRoleBadgeStyle(u.role) }}>{u.role}</span>
-                <span className={`status-badge ${u.status.toLowerCase()}`}>{u.status}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '1rem' }}>
-                {u.photo ? (
-                  <img src={u.photo} alt={u.name} style={{ width: '46px', height: '46px', borderRadius: '50%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '46px', height: '46px', borderRadius: '50%', background: 'linear-gradient(135deg, #7C3AED, #9333EA)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700 }}>
-                    {getInitials(u.name)}
-                  </div>
-                )}
-                <div>
-                  <h4 style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 600 }}>{u.name}</h4>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{u.email}</p>
-                </div>
-              </div>
-              <div style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem', marginTop: '0.8rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                  <span style={{ color: 'var(--text-dim)' }}>Type:</span>
-                  <span style={{ color: u.employeeType === 'Contract' ? '#FBBF24' : '#34D399', fontWeight: 600 }}>
-                    {u.employeeType || 'Permanent'}
-                  </span>
-                </div>
-                {u.employeeType === 'Contract' && (u.contractStartDate || u.contractDuration) && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                    <span style={{ color: 'var(--text-dim)' }}>Contract Period:</span>
-                    <span style={{ color: '#FBBF24', fontSize: '0.78rem', fontWeight: 600 }}>
-                      {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} – ${u.contractEndDate}` : u.contractDuration}
-                    </span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
-                  <span style={{ color: 'var(--text-dim)' }}>Dept:</span>
-                  <span style={{ color: '#fff', fontWeight: 500 }}>{u.department}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
-                  <span style={{ color: 'var(--text-dim)' }}>Position:</span>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{u.jobPosition}</span>
-                </div>
-              </div>
+          {filteredUsers.length === 0 ? (
+            <div className="glass-panel" style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+              <Filter size={32} color="#64748B" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+              <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#CBD5E1' }}>No employees match the selected filters</div>
+              <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Try selecting "All Employee Types" or clearing your search term.</div>
             </div>
-          ))}
+          ) : (
+            filteredUsers.map((u) => {
+              const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+                Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+              return (
+                <div
+                  key={u.id || u._id}
+                  onClick={() => handleOpenUserDetail(u)}
+                  className="glass-panel glass-panel-interactive"
+                  style={{ padding: '1.5rem', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '0.25rem 0.7rem', borderRadius: '10px', ...getRoleBadgeStyle(u.role) }}>{u.role}</span>
+                    <span className={`status-badge ${u.status.toLowerCase()}`}>{u.status}</span>
+                  </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <UserDisplayCell
+                      name={u.name}
+                      email={u.email}
+                      photo={u.photo}
+                      role={u.role}
+                      department={u.department}
+                      employeeType={isContract ? 'Contract' : 'Permanent'}
+                      size={46}
+                    />
+                  </div>
+                  <div style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem', marginTop: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>Type:</span>
+                      <span style={{ color: isContract ? '#FBBF24' : '#34D399', fontWeight: 600 }}>
+                        {isContract ? 'Contract' : 'Permanent'}
+                      </span>
+                    </div>
+                    {isContract && (u.contractStartDate || u.contractDuration) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                        <span style={{ color: 'var(--text-dim)' }}>Contract Period:</span>
+                        <span style={{ color: '#FBBF24', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} – ${u.contractEndDate}` : u.contractDuration}
+                        </span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>Dept:</span>
+                      <span style={{ color: '#fff', fontWeight: 500 }}>{u.department}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
+                      <span style={{ color: 'var(--text-dim)' }}>Position:</span>
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{u.jobPosition}</span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '0.6rem',
+                      paddingTop: '0.5rem',
+                      borderTop: '1px dashed rgba(255,255,255,0.08)'
+                    }}>
+                      <div>
+                        <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>Salary: </span>
+                        <span style={{ color: '#34D399', fontWeight: 700, fontSize: '0.88rem' }}>
+                          ₹{Number(u.salary || 50000).toLocaleString()} <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontWeight: 400 }}>/ mo</span>
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', position: 'relative' }}>
+                        {canEditUser(u) && (
+                          <button
+                            onClick={(e) => handleOpenEditUser(e, u)}
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.06)',
+                              border: '1px solid rgba(255, 255, 255, 0.12)',
+                              color: '#E2E8F0',
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '5px',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                            title="Edit Employee Profile"
+                          >
+                            <Edit size={11} />
+                            <span>Edit</span>
+                          </button>
+                        )}
+                        {(canEditUser(u) || canDeactivateUser(u)) && (
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdownUserId(activeDropdownUserId === `kanban_${u.id || u._id}` ? null : `kanban_${u.id || u._id}`);
+                              }}
+                              style={{
+                                background: activeDropdownUserId === `kanban_${u.id || u._id}` ? 'rgba(124, 58, 237, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                                border: '1px solid rgba(255, 255, 255, 0.14)',
+                                color: '#E2E8F0',
+                                width: '26px',
+                                height: '26px',
+                                borderRadius: '5px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                              title="More Options"
+                            >
+                              <MoreVertical size={13} />
+                            </button>
+                            {activeDropdownUserId === `kanban_${u.id || u._id}` && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  position: 'absolute',
+                                  right: 0,
+                                  bottom: 'calc(100% + 4px)',
+                                  background: '#1A162B',
+                                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                                  borderRadius: '10px',
+                                  boxShadow: '0 12px 30px rgba(0, 0, 0, 0.65)',
+                                  padding: '0.35rem',
+                                  minWidth: '185px',
+                                  zIndex: 100,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.2rem',
+                                  textAlign: 'left'
+                                }}
+                              >
+                                {canEditUser(u) && (
+                                  <button
+                                    onClick={(e) => {
+                                      setActiveDropdownUserId(null);
+                                      handleOpenEditUser(e, u);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      padding: '0.45rem 0.65rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: '#E2E8F0',
+                                      fontSize: '0.78rem',
+                                      cursor: 'pointer',
+                                      width: '100%'
+                                    }}
+                                  >
+                                    <Edit size={13} color="#A78BFA" />
+                                    <span>Edit Profile</span>
+                                  </button>
+                                )}
+                                {canDeactivateUser(u) && (
+                                  <button
+                                    onClick={(e) => {
+                                      setActiveDropdownUserId(null);
+                                      handleToggleStatus(e, u.id || u._id);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '0.45rem 0.65rem',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: 'transparent',
+                                      color: u.status === 'ACTIVE' ? '#FBBF24' : '#34D399',
+                                      fontSize: '0.78rem',
+                                      cursor: 'pointer',
+                                      width: '100%'
+                                    }}
+                                  >
+                                    <span>{u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</span>
+                                    <StatusToggleSwitch isActive={u.status === 'ACTIVE'} onToggle={(e) => { setActiveDropdownUserId(null); handleToggleStatus(e, u.id || u._id); }} size="sm" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
@@ -653,6 +994,17 @@ export const UserManagementPage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onUserCreated={loadData}
+      />
+
+      {/* User Edit Modal */}
+      <CreateUserModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedUserForEdit(null);
+        }}
+        onUserCreated={loadData}
+        userToEdit={selectedUserForEdit}
       />
 
       {/* User Detail & Profile Modal Window */}

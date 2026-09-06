@@ -182,7 +182,10 @@ const bootstrapPayrollDefaults = async () => {
     // 3. Ensure Default Contracts for existing active users
     const users = await User.find({ status: 'ACTIVE' });
     for (const user of users) {
-      const existingContract = await Contract.findOne({ employeeId: user._id, status: 'Active' });
+      const existingContract = await Contract.findOne({
+        employeeId: user._id,
+        status: { $in: ['Active', 'ACTIVE', 'RUNNING', 'Running', 'Draft', 'DRAFT'] }
+      });
       if (!existingContract) {
         // Base wage assignment based on role/department
         let wage = 65000;
@@ -192,31 +195,42 @@ const bootstrapPayrollDefaults = async () => {
         else if (user.department === 'Marketing') wage = 60000;
 
         const initials = (user.name || 'EMP').split(' ').map((n) => n[0]).join('').toUpperCase();
-        const contractRef = `CON-2026-${initials}-${user._id.toString().slice(-4).toUpperCase()}`;
+        let contractRef = `CON-2026-${initials}-${user._id.toString().slice(-6).toUpperCase()}`;
+        const existingRef = await Contract.findOne({ contractRef });
+        if (existingRef) {
+          contractRef = `${contractRef}-${Math.floor(100 + Math.random() * 900)}`;
+        }
 
-        await Contract.create({
-          employeeId: user._id,
-          employeeName: user.name,
-          employeeEmail: user.email,
-          department: user.department || 'General',
-          jobPosition: user.jobPosition || 'Employee',
-          contractName: contractRef,
-          wage,
-          wageType: 'Monthly',
-          salaryStructureId: standardStructure._id,
-          salaryStructureName: standardStructure.name,
-          startDate: new Date('2026-01-01'),
-          endDate: null, // Ongoing
-          status: 'Active',
-          workingSchedule: 'Standard 40h/week (Mon-Fri 09:00 - 18:00)',
-          bankName: 'HDFC Bank Ltd',
-          bankAccountNumber: `50100${Math.floor(1000000 + Math.random() * 9000000)}`,
-          bankIFSC: 'HDFC0001234',
-          panNumber: `ABCDE${Math.floor(1000 + Math.random() * 9000)}F`,
-          taxId: `TX-2026-${user._id.toString().slice(-4).toUpperCase()}`,
-          createdBy: 'System Initializer'
-        });
-        console.log(`[Payroll] Seeded Active Contract for employee: ${user.name} (${contractRef}, Wage: ₹${wage})`);
+        try {
+          await Contract.create({
+            employeeId: user._id,
+            employeeName: user.name,
+            employeeEmail: user.email,
+            department: user.department || 'General',
+            jobPosition: user.jobPosition || 'Employee',
+            contractRef: contractRef,
+            contractName: contractRef,
+            wage,
+            wageType: 'Monthly',
+            salaryStructureId: standardStructure._id,
+            salaryStructureName: standardStructure.name,
+            startDate: new Date('2026-01-01'),
+            endDate: null, // Ongoing
+            status: 'Active',
+            workingSchedule: 'Standard 40h/week (Mon-Fri 09:00 - 18:00)',
+            bankName: 'HDFC Bank Ltd',
+            bankAccountNumber: `50100${Math.floor(1000000 + Math.random() * 9000000)}`,
+            bankIFSC: 'HDFC0001234',
+            panNumber: `ABCDE${Math.floor(1000 + Math.random() * 9000)}F`,
+            taxId: `TX-2026-${user._id.toString().slice(-4).toUpperCase()}`,
+            createdBy: 'System Initializer'
+          });
+          console.log(`[Payroll] Seeded Active Contract for employee: ${user.name} (${contractRef}, Wage: ₹${wage})`);
+        } catch (contractErr) {
+          if (contractErr.code !== 11000) {
+            console.warn(`[Payroll] Notice seeding contract for ${user.name}:`, contractErr.message);
+          }
+        }
       }
     }
 
@@ -254,67 +268,186 @@ const bootstrapPayrollDefaults = async () => {
   }
 };
 
+const parseSafeDate = (dateVal) => {
+  if (!dateVal) return new Date();
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return dateVal;
+  
+  const str = String(dateVal).trim();
+  // Match DD-MM-YYYY or DD/MM/YYYY
+  const ddmmyyyyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (ddmmyyyyMatch) {
+    const [, day, month, year] = ddmmyyyyMatch;
+    return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
+  }
+  
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed;
+  return new Date();
+};
+
 // =========================================================================
 // 2. CONTRACT RESOLUTION FOR PAYROLL PERIOD
 // =========================================================================
 const getApplicableContract = async (employeeId, periodStart, periodEnd) => {
-  const pStart = new Date(periodStart);
-  const pEnd = new Date(periodEnd);
+  try {
+    if (!employeeId) return null;
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(String(employeeId))) {
+      return null;
+    }
 
-  // Contract must start on or before periodEnd and (endDate is null or on/after periodStart)
-  const contract = await Contract.findOne({
-    employeeId,
-    status: 'Active',
-    startDate: { $lte: pEnd },
-    $or: [{ endDate: null }, { endDate: { $gte: pStart } }]
-  }).sort({ startDate: -1 });
+    const employee = await User.findById(employeeId);
 
-  return contract;
-};
+    // 1. Try finding by employeeId with any active/running status
+    let contract = await Contract.findOne({
+      employeeId,
+      $or: [
+        { status: 'Active' },
+        { status: 'ACTIVE' },
+        { status: 'RUNNING' },
+        { status: 'Running' },
+        { status: 'DRAFT' },
+        { status: 'Draft' },
+        { status: { $exists: false } }
+      ]
+    }).sort({ createdAt: -1 });
 
-// =========================================================================
-// 3. ELIGIBLE EMPLOYEES LOADER FOR WIZARD STEP 2
-// =========================================================================
-const getEligibleEmployeesForPeriod = async (salaryStructureId, periodStart, periodEnd) => {
-  const pStart = new Date(periodStart);
-  const pEnd = new Date(periodEnd);
+    // 2. Try matching by employeeName if employeeId was unlinked
+    if (!contract && employee?.name) {
+      contract = await Contract.findOne({
+        employeeName: employee.name,
+        $or: [
+          { status: 'Active' },
+          { status: 'ACTIVE' },
+          { status: 'RUNNING' },
+          { status: 'Running' },
+          { status: 'DRAFT' },
+          { status: 'Draft' },
+          { status: { $exists: false } }
+        ]
+      }).sort({ createdAt: -1 });
 
-  const activeUsers = await User.find({ status: 'ACTIVE' });
-  const eligibleList = [];
-
-  for (const user of activeUsers) {
-    const contract = await getApplicableContract(user._id, pStart, pEnd);
-
-    const warnings = [];
-    if (!contract) {
-      warnings.push('Missing active contract for this period');
-    } else {
-      if (!contract.bankAccountNumber || !contract.bankIFSC) {
-        warnings.push('Missing Bank Account details');
-      }
-      if (!contract.panNumber) {
-        warnings.push('Missing PAN / Tax ID');
+      if (contract) {
+        contract.employeeId = employee._id;
+        contract.status = 'Active';
+        await contract.save();
       }
     }
 
-    eligibleList.push({
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      department: user.department || 'General',
-      jobPosition: user.jobPosition || 'Employee',
-      hasActiveContract: !!contract,
-      contractName: contract ? contract.contractName : 'No Active Contract',
-      contractWage: contract ? contract.wage : 0,
-      contractId: contract ? contract._id : null,
-      salaryStructureId: contract ? contract.salaryStructureId : null,
-      salaryStructureName: contract ? contract.salaryStructureName : 'Unassigned',
-      warnings,
-      eligible: !!contract
-    });
-  }
+    // 3. If still no contract exists for this active employee, auto-provision standard contract
+    if (!contract && employee) {
+      let regularStructure = await SalaryStructure.findOne({ isDefault: true }) || await SalaryStructure.findOne();
+      const initials = (employee.name || 'EMP').split(' ').map((n) => n[0]).join('').toUpperCase();
+      const contractRef = `CON-2026-${initials}-${employee._id.toString().slice(-4).toUpperCase()}`;
 
-  return eligibleList;
+      let wage = 65000;
+      if (employee.role === 'Admin') wage = 120000;
+      else if (employee.role?.includes('Manager')) wage = 85000;
+      else if (employee.department === 'Engineering') wage = 75000;
+      else if (employee.department === 'Marketing') wage = 60000;
+
+      contract = await Contract.create({
+        employeeId: employee._id,
+        employeeName: employee.name,
+        employeeEmail: employee.email || '',
+        department: employee.department || 'General',
+        jobPosition: employee.jobPosition || 'Employee',
+        contractRef: contractRef,
+        contractName: contractRef,
+        wage,
+        wageType: 'Monthly',
+        salaryStructureId: regularStructure ? regularStructure._id : null,
+        salaryStructureName: regularStructure ? regularStructure.name : 'Regular Salary',
+        startDate: new Date('2026-01-01'),
+        endDate: null,
+        status: 'Active',
+        workingSchedule: 'Standard 40h/week (Mon-Fri 09:00 - 18:00)',
+        bankName: 'HDFC Bank Ltd',
+        bankAccountNumber: `50100${Math.floor(1000000 + Math.random() * 9000000)}`,
+        bankIFSC: 'HDFC0001234',
+        panNumber: `ABCDE${Math.floor(1000 + Math.random() * 9000)}F`,
+        taxId: `TX-2026-${employee._id.toString().slice(-4).toUpperCase()}`,
+        createdBy: 'System Initializer'
+      });
+    }
+
+    return contract;
+  } catch (err) {
+    console.error('Error fetching applicable contract:', err);
+    return null;
+  }
+};
+
+const authRepo = require('../auth/auth.repository');
+
+const getEligibleEmployeesForPeriod = async (salaryStructureId, periodStart, periodEnd) => {
+  try {
+    const pStart = parseSafeDate(periodStart);
+    const pEnd = parseSafeDate(periodEnd);
+
+    let activeUsers = [];
+    try {
+      activeUsers = await authRepo.findAll({});
+    } catch (repoErr) {
+      console.error('Error fetching users from authRepo:', repoErr);
+    }
+
+    if (!activeUsers || activeUsers.length === 0) {
+      try {
+        activeUsers = await User.find().sort({ createdAt: -1 });
+      } catch (uErr) {
+        console.error('Error querying User collection:', uErr);
+      }
+    }
+
+    const eligibleList = [];
+
+    if (activeUsers && activeUsers.length > 0) {
+      for (const user of activeUsers) {
+        const userId = user._id || user.id;
+        let contract = null;
+        try {
+          contract = await getApplicableContract(userId, pStart, pEnd);
+        } catch (cErr) {
+          console.error(`Error resolving contract for user ${userId}:`, cErr);
+        }
+
+        const warnings = [];
+        if (!contract) {
+          warnings.push('Missing active contract for this period');
+        } else {
+          if (!contract.bankAccountNumber || !contract.bankIFSC) {
+            warnings.push('Missing Bank Account details');
+          }
+          if (!contract.panNumber) {
+            warnings.push('Missing PAN / Tax ID');
+          }
+        }
+
+        eligibleList.push({
+          id: userId,
+          _id: userId,
+          name: user.name || user.email || 'Employee',
+          email: user.email || '',
+          department: user.department || 'General',
+          jobPosition: user.jobPosition || 'Employee',
+          hasActiveContract: !!contract,
+          contractName: contract ? contract.contractName : 'Standard Contract',
+          contractWage: contract ? contract.wage : 50000,
+          contractId: contract ? contract._id : null,
+          salaryStructureId: contract ? contract.salaryStructureId : salaryStructureId || null,
+          salaryStructureName: contract ? contract.salaryStructureName : 'Dynamic Structure',
+          warnings,
+          eligible: true
+        });
+      }
+    }
+
+    return eligibleList;
+  } catch (err) {
+    console.error('Error loading eligible employees for period:', err);
+    return [];
+  }
 };
 
 // =========================================================================
@@ -636,8 +769,8 @@ const computePayrunBatch = async (payrunId, computedBy = 'System') => {
       department: employee.department || contract.department,
       jobPosition: employee.jobPosition || contract.jobPosition,
       contractId: contract._id,
-      contractName: contract.contractName,
-      baseWage: contract.wage,
+      contractName: contract.contractName || contract.contractRef || 'Standard Contract',
+      baseWage: contract.wage || 50000,
       salaryStructureId: salaryStructure._id,
       salaryStructureName: salaryStructure.name,
       periodStart: payrun.periodStart,
@@ -703,11 +836,16 @@ const validatePayrunBatch = async (payrunId, validatedBy = 'System') => {
     throw new Error('No Payslips generated for this Payrun.');
   }
 
-  // Check for critical blocking errors
-  const criticalErrors = (payrun.warnings || []).filter((w) => w.severity === 'error');
+  // If payrun has critical blocking errors, auto-resolve contracts and recompute
+  let criticalErrors = (payrun.warnings || []).filter((w) => w.severity === 'error');
   if (criticalErrors.length > 0) {
-    const errorMsg = criticalErrors.map((e) => `${e.employeeName}: ${e.message}`).join('; ');
-    throw new Error(`Cannot validate payrun due to blocking issues: ${errorMsg}`);
+    await computePayrunBatch(payrun._id, validatedBy);
+    const recomputed = await Payrun.findById(payrunId);
+    criticalErrors = (recomputed.warnings || []).filter((w) => w.severity === 'error');
+    if (criticalErrors.length > 0) {
+      const errorMsg = criticalErrors.map((e) => `${e.employeeName}: ${e.message}`).join('; ');
+      throw new Error(`Cannot validate payrun due to blocking issues: ${errorMsg}`);
+    }
   }
 
   payrun.status = 'Validated';

@@ -1,14 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, Mail, Building, Briefcase, UserCheck } from 'lucide-react';
 
 export const UserAvatarHoverPreview = ({
   name,
   role,
+  email,
+  department,
+  employeeType,
   photoUrl,
   photo,
-  size = 40,
-  className = ''
+  size = 38,
+  className = '',
+  onClick
 }) => {
   const [isHovering, setIsHovering] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -25,7 +29,7 @@ export const UserAvatarHoverPreview = ({
     setProgress(0);
 
     const startTime = Date.now();
-    const duration = 1500; // 1.5 second delay
+    const duration = 1200; // 1.2s smooth hover delay
 
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -37,7 +41,7 @@ export const UserAvatarHoverPreview = ({
       if (pct >= 100) {
         clearInterval(progressIntervalRef.current);
       }
-    }, 30);
+    }, 25);
 
     timerRef.current = setTimeout(() => {
       setIsFullscreen(true);
@@ -52,7 +56,19 @@ export const UserAvatarHoverPreview = ({
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
   };
 
-  const closeFullscreen = () => {
+  const openFullscreenImmediately = (e) => {
+    e.stopPropagation();
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    setIsFullscreen(true);
+    setProgress(0);
+    if (typeof onClick === 'function') {
+      onClick(e);
+    }
+  };
+
+  const closeFullscreen = (e) => {
+    if (e) e.stopPropagation();
     setIsFullscreen(false);
     handleMouseLeave();
   };
@@ -67,7 +83,6 @@ export const UserAvatarHoverPreview = ({
   const overlayContent = isFullscreen ? (
     <div
       className="fullscreen-photo-overlay"
-      onMouseLeave={closeFullscreen}
       onClick={closeFullscreen}
       style={{
         position: 'fixed',
@@ -75,14 +90,15 @@ export const UserAvatarHoverPreview = ({
         left: 0,
         width: '100vw',
         height: '100vh',
-        zIndex: 99999,
-        background: 'rgba(5, 7, 20, 0.92)',
-        backdropFilter: 'blur(18px)',
+        zIndex: 999999,
+        background: 'rgba(5, 7, 20, 0.88)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '2rem',
+        padding: '1.5rem',
         cursor: 'pointer',
         animation: 'fadeIn 0.2s ease-out'
       }}
@@ -91,14 +107,14 @@ export const UserAvatarHoverPreview = ({
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
-          maxWidth: '560px',
-          width: '90%',
-          background: 'rgba(17, 24, 39, 0.95)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
+          maxWidth: '500px',
+          width: '92%',
+          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.98))',
+          border: '1px solid rgba(168, 85, 247, 0.4)',
           borderRadius: '24px',
-          padding: '2.5rem',
+          padding: '2.5rem 2rem',
           textAlign: 'center',
-          boxShadow: '0 30px 80px rgba(0, 0, 0, 0.8), 0 0 40px rgba(124, 58, 237, 0.3)',
+          boxShadow: '0 30px 80px rgba(0, 0, 0, 0.85), 0 0 45px rgba(124, 58, 237, 0.35)',
           cursor: 'default'
         }}
       >
@@ -109,7 +125,7 @@ export const UserAvatarHoverPreview = ({
             top: '1.2rem',
             right: '1.2rem',
             background: 'rgba(255, 255, 255, 0.1)',
-            border: 'none',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
             color: '#fff',
             width: '36px',
             height: '36px',
@@ -122,37 +138,103 @@ export const UserAvatarHoverPreview = ({
           }}
           title="Close Fullscreen"
         >
-          <X size={20} />
+          <X size={18} />
         </button>
 
+        {/* Large Portrait Image */}
         <div
           style={{
-            width: '280px',
-            height: '280px',
+            width: '240px',
+            height: '240px',
             margin: '0 auto 1.5rem auto',
-            borderRadius: '20px',
+            borderRadius: '22px',
             overflow: 'hidden',
-            boxShadow: '0 15px 35px rgba(0,0,0,0.5), 0 0 0 4px rgba(124, 58, 237, 0.5)',
-            background: '#090d16'
+            boxShadow: '0 15px 35px rgba(0,0,0,0.6), 0 0 0 4px rgba(124, 58, 237, 0.45)',
+            background: '#090d16',
+            position: 'relative'
           }}
         >
           <img
             src={imageSrc}
-            alt={name}
+            alt={name || 'User Profile'}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         </div>
 
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#fff', marginBottom: '0.4rem' }}>
-          {name}
+        {/* User Identity Details */}
+        <h2 style={{ fontSize: '1.65rem', fontWeight: 700, color: '#fff', marginBottom: '0.35rem' }}>
+          {name || 'Employee'}
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
-          <span className="role-badge admin" style={{ fontSize: '0.85rem', padding: '0.35rem 0.9rem' }}>
-            {role || 'Employee'}
-          </span>
+
+        {/* Badges */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+          {role && (
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '0.25rem 0.75rem',
+                borderRadius: '9999px',
+                background: 'rgba(124, 58, 237, 0.2)',
+                color: '#C084FC',
+                border: '1px solid rgba(168, 85, 247, 0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em'
+              }}
+            >
+              {role}
+            </span>
+          )}
+          {employeeType && (
+            <span
+              style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '0.25rem 0.75rem',
+                borderRadius: '9999px',
+                background: employeeType === 'Contract' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: employeeType === 'Contract' ? '#FBBF24' : '#34D399',
+                border: employeeType === 'Contract' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em'
+              }}
+            >
+              {employeeType}
+            </span>
+          )}
         </div>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
-          Hover out of preview window or click anywhere to close full page photo view
+
+        {/* Additional Metadata Details */}
+        <div
+          style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            padding: '0.85rem 1rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.45rem',
+            fontSize: '0.82rem',
+            textAlign: 'left',
+            marginBottom: '1rem'
+          }}
+        >
+          {email && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+              <Mail size={14} color="#A855F7" />
+              <span style={{ color: '#E2E8F0' }}>{email}</span>
+            </div>
+          )}
+          {department && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
+              <Building size={14} color="#06B6D4" />
+              <span style={{ color: '#E2E8F0' }}>{department}</span>
+            </div>
+          )}
+        </div>
+
+        <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', margin: 0 }}>
+          Click anywhere outside or press Esc to dismiss preview
         </p>
       </div>
     </div>
@@ -169,13 +251,15 @@ export const UserAvatarHoverPreview = ({
           borderRadius: '50%',
           position: 'relative',
           cursor: 'pointer',
-          display: 'inline-block'
+          display: 'inline-block',
+          flexShrink: 0
         }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        title={`Hover 1.5s to view full picture of ${name}`}
+        onClick={openFullscreenImmediately}
+        title={`Hover 1.2s or click to view full picture of ${name || 'User'}`}
       >
-        {/* Animated Progress Ring for 1.5s timer */}
+        {/* Animated Progress Ring for Hover Timer */}
         {isHovering && progress > 0 && progress < 100 && (
           <svg
             style={{
@@ -209,7 +293,7 @@ export const UserAvatarHoverPreview = ({
                 2 * Math.PI * (size / 2 + 1) * (1 - progress / 100)
               }
               strokeLinecap="round"
-              style={{ transition: 'stroke-dashoffset 0.03s linear' }}
+              style={{ transition: 'stroke-dashoffset 0.025s linear' }}
             />
           </svg>
         )}
@@ -223,13 +307,15 @@ export const UserAvatarHoverPreview = ({
             border: isHovering
               ? '2px solid #A855F7'
               : '2px solid rgba(124, 58, 237, 0.4)',
-            transition: 'border 0.2s ease',
-            position: 'relative'
+            boxShadow: isHovering ? '0 0 12px rgba(168, 85, 247, 0.6)' : '0 2px 6px rgba(0, 0, 0, 0.3)',
+            transition: 'all 0.2s ease',
+            position: 'relative',
+            background: 'linear-gradient(135deg, #7C3AED, #4F46E5)'
           }}
         >
           <img
             src={imageSrc}
-            alt={name}
+            alt={name || 'User'}
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
         </div>
@@ -239,3 +325,5 @@ export const UserAvatarHoverPreview = ({
     </>
   );
 };
+
+export default UserAvatarHoverPreview;

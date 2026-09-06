@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const { TimeOffType } = require('./timeoff-type.model');
 const { Allocation } = require('./allocation.model');
 const { TimeOffRequest } = require('./timeoff-request.model');
@@ -43,16 +44,15 @@ const calculateDuration = (startDateStr, endDateStr, unit = 'Days', startTimeStr
 
 // Check for overlapping pending or approved leave requests
 const checkOverlappingLeaves = async (employeeId, startDate, endDate, excludeRequestId = null) => {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
-
   const query = {
     employee: employeeId,
-    status: { $in: ['Pending', 'Approved'] },
-    startDate: { $lte: end },
-    endDate: { $gte: start }
+    status: { $in: ['Pending', 'Pending Approval', 'Approved'] },
+    $or: [
+      {
+        startDate: { $lte: new Date(endDate) },
+        endDate: { $gte: new Date(startDate) }
+      }
+    ]
   };
 
   if (excludeRequestId) {
@@ -70,21 +70,41 @@ const getEmployeeLeaveBalance = async (employeeId, timeOffTypeId) => {
     throw new Error('Time off type not found');
   }
 
+  // Resolve user document for robust identifier matching
+  let user = null;
+  try {
+    if (mongoose.Types.ObjectId.isValid(employeeId)) {
+      user = await User.findById(employeeId);
+    }
+    if (!user) {
+      user = await User.findOne({ $or: [{ _id: employeeId }, { id: employeeId }, { email: employeeId }] });
+    }
+  } catch (e) {
+    // fallback
+  }
+  const resolvedEmpId = user?._id || employeeId;
+
   // If leave type does not require allocation (e.g. Unpaid Leave), infinite balance
   if (!timeOffType.requiresAllocation) {
     const approvedRequests = await TimeOffRequest.find({
-      employee: employeeId,
+      $or: [
+        { employee: resolvedEmpId },
+        ...(user ? [{ employeeEmail: user.email }] : [])
+      ],
       timeOffType: timeOffTypeId,
       status: 'Approved'
     });
     const pendingRequests = await TimeOffRequest.find({
-      employee: employeeId,
+      $or: [
+        { employee: resolvedEmpId },
+        ...(user ? [{ employeeEmail: user.email }] : [])
+      ],
       timeOffType: timeOffTypeId,
-      status: 'Pending'
+      status: { $in: ['Pending', 'Pending Approval'] }
     });
 
-    const used = approvedRequests.reduce((acc, r) => acc + (r.duration || 0), 0);
-    const pending = pendingRequests.reduce((acc, r) => acc + (r.duration || 0), 0);
+    const used = approvedRequests.reduce((acc, r) => acc + (Number(r.duration) || Number(r.days) || 0), 0);
+    const pending = pendingRequests.reduce((acc, r) => acc + (Number(r.duration) || Number(r.days) || 0), 0);
 
     return {
       timeOffTypeId: timeOffType._id,
@@ -102,11 +122,51 @@ const getEmployeeLeaveBalance = async (employeeId, timeOffTypeId) => {
   }
 
   // 1. Sum approved allocations
-  const approvedAllocations = await Allocation.find({
-    employee: employeeId,
+  let approvedAllocations = await Allocation.find({
+    $or: [
+      { employee: resolvedEmpId },
+      ...(user ? [{ employeeEmail: user.email }] : [])
+    ],
     timeOffType: timeOffTypeId,
-    status: 'Approved'
+    status: { $in: ['Approved', 'Active'] }
   });
+
+  // If no allocations exist in DB yet, auto-provision standard annual company entitlement
+  if (approvedAllocations.length === 0 && user) {
+    try {
+      const defaultAmount = timeOffType.code === 'SICK' ? 24 : (timeOffType.code === 'CASUAL' ? 12 : 12);
+      const currentYear = new Date().getFullYear();
+      const autoAlloc = await Allocation.create({
+        employee: user._id,
+        employeeName: user.name,
+        employeeEmail: user.email,
+        department: user.department || 'General',
+        timeOffType: timeOffType._id,
+        timeOffTypeName: timeOffType.name,
+        allocatedAmount: defaultAmount,
+        unit: timeOffType.unit || 'Days',
+        startDate: new Date(`${currentYear}-01-01`),
+        endDate: new Date(`${currentYear}-12-31`),
+        reason: 'Annual policy entitlement allotment',
+        status: 'Approved',
+        approvedBy: user._id,
+        approvedByName: 'System Policy Engine',
+        approvalDate: new Date(),
+        auditTrail: [
+          {
+            action: 'ALLOCATION_AUTO_PROVISIONED',
+            performedByName: 'System Policy Engine',
+            newStatus: 'Approved',
+            note: `Annual entitlement of ${defaultAmount} ${timeOffType.unit || 'Days'} auto-allotted.`
+          }
+        ]
+      });
+      approvedAllocations = [autoAlloc];
+    } catch (e) {
+      const defaultAmount = timeOffType.code === 'SICK' ? 24 : (timeOffType.code === 'CASUAL' ? 12 : 12);
+      approvedAllocations = [{ allocatedAmount: defaultAmount }];
+    }
+  }
 
   const now = new Date();
   let totalAllocated = 0;
@@ -122,19 +182,25 @@ const getEmployeeLeaveBalance = async (employeeId, timeOffTypeId) => {
 
   // 2. Sum approved requests (used)
   const approvedRequests = await TimeOffRequest.find({
-    employee: employeeId,
+    $or: [
+      { employee: resolvedEmpId },
+      ...(user ? [{ employeeEmail: user.email }] : [])
+    ],
     timeOffType: timeOffTypeId,
     status: 'Approved'
   });
-  const totalUsed = approvedRequests.reduce((acc, r) => acc + (r.duration || 0), 0);
+  const totalUsed = approvedRequests.reduce((acc, r) => acc + (Number(r.duration) || Number(r.days) || 0), 0);
 
   // 3. Sum pending requests
   const pendingRequests = await TimeOffRequest.find({
-    employee: employeeId,
+    $or: [
+      { employee: resolvedEmpId },
+      ...(user ? [{ employeeEmail: user.email }] : [])
+    ],
     timeOffType: timeOffTypeId,
-    status: 'Pending'
+    status: { $in: ['Pending', 'Pending Approval'] }
   });
-  const totalPending = pendingRequests.reduce((acc, r) => acc + (r.duration || 0), 0);
+  const totalPending = pendingRequests.reduce((acc, r) => acc + (Number(r.duration) || Number(r.days) || 0), 0);
 
   const remaining = Math.max(0, totalAllocated - totalUsed);
 

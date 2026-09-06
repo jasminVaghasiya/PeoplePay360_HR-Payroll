@@ -70,15 +70,16 @@ export const LeaveBalanceCards = ({ balances = [] }) => {
             {!isUnlimited && (
               <div style={{ marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-dim)', marginBottom: '0.35rem' }}>
-                  <span>Used: {b.used} {b.unit} ({usedPercentage}%)</span>
+                  <span>Available: <strong style={{ color: '#34D399' }}>{b.remaining} {b.unit} ({remainingPercentage}%)</strong></span>
                   <span>Cap: {b.allocated} {b.unit}</span>
                 </div>
                 <div className="progress-track">
                   <div
                     className="progress-fill"
                     style={{
-                      width: `${usedPercentage}%`,
-                      background: usedPercentage > 85 ? '#EF4444' : 'linear-gradient(90deg, #8B5CF6, #3B82F6)'
+                      width: `${remainingPercentage}%`,
+                      background: remainingPercentage > 50 ? 'linear-gradient(90deg, #10B981, #34D399)' : remainingPercentage > 20 ? '#F59E0B' : '#EF4444',
+                      boxShadow: remainingPercentage > 0 ? '0 0 10px rgba(52, 211, 153, 0.45)' : 'none'
                     }}
                   />
                 </div>

@@ -62,7 +62,6 @@ const salaryRuleSchema = new mongoose.Schema(
 );
 
 salaryRuleSchema.index({ sequence: 1 });
-salaryRuleSchema.index({ code: 1 });
 
 const SalaryRule = mongoose.model('SalaryRule', salaryRuleSchema);
 

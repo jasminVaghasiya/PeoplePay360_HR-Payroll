@@ -106,4 +106,4 @@ const allocationSchema = new mongoose.Schema(
 
 const Allocation = mongoose.model('Allocation', allocationSchema);
 
-module.exports = { Allocation };
+module.exports = { Allocation, TimeOffAllocation: Allocation };

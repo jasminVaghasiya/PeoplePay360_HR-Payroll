@@ -8,6 +8,7 @@ class ContractService {
     const cleanEmail = contractData.employeeEmail.trim().toLowerCase();
     try {
       let userAccount = await authRepository.findByEmail(cleanEmail);
+      const targetEmpType = contractData.employeeType || 'Permanent';
 
       if (!userAccount) {
         const userPassword = inputPassword && inputPassword.trim() ? inputPassword.trim() : 'password123';
@@ -18,10 +19,10 @@ class ContractService {
           role: 'Employee',
           department: contractData.department || 'Engineering',
           jobPosition: contractData.jobPosition || 'Software Engineer',
-          employeeType: 'Contract',
-          contractStartDate: contractData.startDate || '',
-          contractEndDate: contractData.endDate || '',
-          contractDuration: contractData.startDate && contractData.endDate ? `${contractData.startDate} to ${contractData.endDate}` : '',
+          employeeType: targetEmpType,
+          contractStartDate: targetEmpType === 'Contract' && contractData.startDate ? new Date(contractData.startDate).toISOString().split('T')[0] : '',
+          contractEndDate: targetEmpType === 'Contract' && contractData.endDate ? new Date(contractData.endDate).toISOString().split('T')[0] : '',
+          contractDuration: targetEmpType === 'Contract' && contractData.startDate && contractData.endDate ? `${new Date(contractData.startDate).toISOString().split('T')[0]} to ${new Date(contractData.endDate).toISOString().split('T')[0]}` : '',
           status: 'ACTIVE',
           createdByName: contractData.createdByName || 'HR Manager'
         });
@@ -29,7 +30,17 @@ class ContractService {
         if (inputPassword && inputPassword.trim()) {
           userAccount.password = inputPassword.trim();
         }
-        userAccount.employeeType = 'Contract';
+        if (contractData.employeeType && userAccount.employeeType !== 'Permanent') {
+          userAccount.employeeType = contractData.employeeType;
+        }
+        if (userAccount.employeeType === 'Contract') {
+          if (contractData.startDate) userAccount.contractStartDate = new Date(contractData.startDate).toISOString().split('T')[0];
+          if (contractData.endDate) userAccount.contractEndDate = new Date(contractData.endDate).toISOString().split('T')[0];
+        } else {
+          userAccount.contractStartDate = '';
+          userAccount.contractEndDate = '';
+          userAccount.contractDuration = '';
+        }
         userAccount.department = contractData.department || userAccount.department;
         userAccount.jobPosition = contractData.jobPosition || userAccount.jobPosition;
         userAccount.status = 'ACTIVE';
@@ -46,12 +57,6 @@ class ContractService {
 
   async getContracts(query = {}) {
     const contracts = await contractRepository.findAll(query);
-    // Ensure all contract employees have an active User account for login capability
-    for (const c of contracts) {
-      if (c.employeeEmail) {
-        await this.ensureUserAccountForContract(c);
-      }
-    }
     return contracts;
   }
 
@@ -115,6 +120,7 @@ class ContractService {
 
     const contractData = {
       contractRef: autoRef,
+      contractName: data.contractName || autoRef,
       employeeId: employeeId || null,
       employeeName: employeeName.trim(),
       employeeEmail: employeeEmail ? employeeEmail.trim() : '',
@@ -125,7 +131,8 @@ class ContractService {
       jobPosition: jobPosition || 'Software Engineer',
       wage: Number(wage) || 5000,
       salaryStructure: salaryStructure || 'Standard Structure',
-      status: status || 'DRAFT',
+      salaryStructureName: salaryStructure || 'Standard Structure',
+      status: status || 'RUNNING',
       notes: notes || '',
       createdByName: creatorUser?.name || 'HR Manager'
     };
@@ -149,7 +156,7 @@ class ContractService {
   }
 
   async updateContractStatus(id, newStatus) {
-    const validStatuses = ['DRAFT', 'RUNNING', 'EXPIRED', 'CANCELLED'];
+    const validStatuses = ['DRAFT', 'Draft', 'RUNNING', 'Running', 'Active', 'ACTIVE', 'EXPIRED', 'Expired', 'CANCELLED', 'Cancelled', 'TERMINATED', 'Terminated'];
     if (!validStatuses.includes(newStatus)) {
       throw { statusCode: 400, message: `Invalid contract status '${newStatus}'. Valid statuses are: ${validStatuses.join(', ')}` };
     }

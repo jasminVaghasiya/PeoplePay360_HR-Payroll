@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { CreateUserModal } from './CreateUserModal';
 import { UserAvatarHoverPreview } from '../../components/UserAvatarHoverPreview';
 import CustomDropdown from '../../components/CustomDropdown';
-import { UserPlus, Search, Shield, Filter, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { StatusToggleSwitch } from '../../components/StatusToggleSwitch';
+import { UserPlus, Search, Shield, Filter, CheckCircle, XCircle, RefreshCw, MoreVertical, Trash2, AlertTriangle, Edit } from 'lucide-react';
 
 export const UserManagementPage = () => {
-  const { user: currentUser, fetchUsers, toggleUserStatus, canCreateRole } = useAuth();
+  const { user: currentUser, fetchUsers, toggleUserStatus, deleteUser, canCreateRole } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -15,11 +16,18 @@ export const UserManagementPage = () => {
   const [employeeTypeFilter, setEmployeeTypeFilter] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState('list');
+  const [activeDropdownUserId, setActiveDropdownUserId] = useState(null);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setActiveDropdownUserId(null);
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
-    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter, employeeType: employeeTypeFilter });
-    if (data.success) {
+    const data = await fetchUsers({ search, role: roleFilter, status: statusFilter });
+    if (data.success && Array.isArray(data.users)) {
       setUsers(data.users);
     }
     setLoading(false);
@@ -27,7 +35,34 @@ export const UserManagementPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [search, roleFilter, statusFilter, employeeTypeFilter]);
+  }, [search, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    if (users.length === 0) {
+      loadData();
+    }
+  }, [employeeTypeFilter]);
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((u) => {
+      if (roleFilter && u.role !== roleFilter) return false;
+      if (statusFilter && u.status !== statusFilter) return false;
+      if (employeeTypeFilter) {
+        const isContractUser = (u.employeeType || '').toLowerCase() === 'contract' &&
+          Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+        const resolvedType = isContractUser ? 'contract' : 'permanent';
+        if (employeeTypeFilter.toLowerCase() !== resolvedType) return false;
+      }
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        const matchesName = u.name?.toLowerCase().includes(q);
+        const matchesEmail = u.email?.toLowerCase().includes(q);
+        const matchesDept = u.department?.toLowerCase().includes(q);
+        if (!matchesName && !matchesEmail && !matchesDept) return false;
+      }
+      return true;
+    });
+  }, [users, roleFilter, statusFilter, employeeTypeFilter, search]);
 
   const handleToggleStatus = async (userId) => {
     const res = await toggleUserStatus(userId);
@@ -187,82 +222,169 @@ export const UserManagementPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.id || u._id}>
-                    <td>
-                      <UserAvatarHoverPreview
-                        name={u.name}
-                        role={u.role}
-                        photoUrl={u.photo}
-                        size={40}
-                      />
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600, color: '#fff' }}>{u.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{u.email}</div>
-                    </td>
-                    <td>
-                      <span className={`role-badge ${getRoleBadgeClass(u.role)}`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <span style={{
-                          fontSize: '0.78rem',
-                          fontWeight: 600,
-                          padding: '0.2rem 0.5rem',
-                          borderRadius: '4px',
-                          display: 'inline-block',
-                          width: 'fit-content',
-                          background: u.employeeType === 'Contract' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                          color: u.employeeType === 'Contract' ? '#FBBF24' : '#34D399'
-                        }}>
-                          {u.employeeType || 'Permanent'}
+                {filteredUsers.map((u) => {
+                  const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+                    Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+                  return (
+                    <tr key={u.id || u._id}>
+                      <td>
+                        <UserAvatarHoverPreview
+                          name={u.name}
+                          role={u.role}
+                          photoUrl={u.photo}
+                          size={40}
+                        />
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600, color: '#fff' }}>{u.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{u.email}</div>
+                      </td>
+                      <td>
+                        <span className={`role-badge ${getRoleBadgeClass(u.role)}`}>
+                          {u.role}
                         </span>
-                        {u.employeeType === 'Contract' && (u.contractStartDate || u.contractDuration) && (
-                          <span style={{ fontSize: '0.7rem', color: '#FBBF24', whiteSpace: 'nowrap' }}>
-                            📅 {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : u.contractDuration}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            padding: '0.2rem 0.5rem',
+                            borderRadius: '4px',
+                            display: 'inline-block',
+                            width: 'fit-content',
+                            background: isContract ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                            color: isContract ? '#FBBF24' : '#34D399'
+                          }}>
+                            {isContract ? 'Contract' : 'Permanent'}
+                          </span>
+                          {isContract && (u.contractStartDate || u.contractDuration) && (
+                            <span style={{ fontSize: '0.7rem', color: '#FBBF24', whiteSpace: 'nowrap' }}>
+                              📅 {u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : (u.contractDuration || 'Fixed-Term')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{u.department}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{u.jobPosition}</div>
+                      </td>
+                      {/* Status Column */}
+                      <td>
+                        <span className={`status-badge ${u.status.toLowerCase()}`}>
+                          {u.status === 'ACTIVE' ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                          {u.status}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {u.createdByName || 'System'}
+                      </td>
+                      <td style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                        {(currentUser?.role === 'Admin' || currentUser?.role === 'HR Payroll Manager') && u.email !== currentUser?.email && u.role !== 'Admin' ? (
+                          <div style={{ position: 'relative', display: 'inline-block' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveDropdownUserId(activeDropdownUserId === (u.id || u._id) ? null : (u.id || u._id));
+                              }}
+                              style={{
+                                background: activeDropdownUserId === (u.id || u._id) ? 'rgba(124, 58, 237, 0.3)' : 'rgba(255, 255, 255, 0.06)',
+                                border: '1px solid rgba(255, 255, 255, 0.14)',
+                                color: '#E2E8F0',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer'
+                              }}
+                              title="More Options"
+                            >
+                              <MoreVertical size={14} />
+                            </button>
+
+                            {activeDropdownUserId === (u.id || u._id) && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  position: 'absolute',
+                                  right: 0,
+                                  top: 'calc(100% + 4px)',
+                                  background: '#1A162B',
+                                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                                  borderRadius: '10px',
+                                  boxShadow: '0 12px 30px rgba(0, 0, 0, 0.65)',
+                                  padding: '0.35rem',
+                                  minWidth: '190px',
+                                  zIndex: 100,
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.2rem',
+                                  textAlign: 'left'
+                                }}
+                              >
+                                <button
+                                  onClick={() => {
+                                    setActiveDropdownUserId(null);
+                                    handleToggleStatus(u.id || u._id);
+                                  }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '0.45rem 0.7rem',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: u.status === 'ACTIVE' ? '#FBBF24' : '#34D399',
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                    width: '100%'
+                                  }}
+                                >
+                                  <span>{u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</span>
+                                  <StatusToggleSwitch isActive={u.status === 'ACTIVE'} onToggle={() => { setActiveDropdownUserId(null); handleToggleStatus(u.id || u._id); }} size="sm" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                            {u.role === 'Admin' ? 'Protected' : 'Current User'}
                           </span>
                         )}
-                      </div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{u.department}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{u.jobPosition}</div>
-                    </td>
-                    <td>
-                      <span className={`status-badge ${u.status.toLowerCase()}`}>
-                        {u.status === 'ACTIVE' ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                        {u.status}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      {u.createdByName || 'System'}
-                    </td>
-                    <td>
-                      {(currentUser?.role === 'Admin' || currentUser?.role === 'HR Payroll Manager') && u.email !== currentUser?.email ? (
-                        <button
-                          onClick={() => handleToggleStatus(u.id || u._id)}
-                          className={u.status === 'ACTIVE' ? 'btn-danger-outline' : 'btn-secondary'}
-                          style={{ padding: '0.3rem 0.7rem', fontSize: '0.78rem' }}
-                        >
-                          {u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
-                        </button>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Current Session</span>
-                      )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredUsers.length === 0 && (
+                  <tr>
+                    <td colSpan="7" style={{ padding: '3.5rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <Filter size={32} color="#64748B" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                      <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#CBD5E1' }}>No employees match the selected filter</div>
+                      <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Try selecting "All Employee Types" or clearing your search term.</div>
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
         </div>
       ) : (
         /* Kanban View */
+        filteredUsers.length === 0 ? (
+          <div className="glass-panel" style={{ padding: '3.5rem 1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <Filter size={32} color="#64748B" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+            <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#CBD5E1' }}>No employees match the selected filter</div>
+            <div style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Try selecting "All Employee Types" or clearing your search term.</div>
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
-          {users.map((u) => (
+          {filteredUsers.map((u) => {
+            const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+              Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+            return (
             <div key={u.id || u._id} className="glass-panel glass-panel-interactive" style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <span className={`role-badge ${getRoleBadgeClass(u.role)}`}>{u.role}</span>
@@ -283,11 +405,11 @@ export const UserManagementPage = () => {
               <div style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.8rem', marginTop: '0.8rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                   <span style={{ color: 'var(--text-dim)' }}>Type:</span>
-                  <span style={{ color: u.employeeType === 'Contract' ? '#FBBF24' : '#34D399', fontWeight: 600 }}>
-                    {u.employeeType || 'Permanent'}
+                  <span style={{ color: isContract ? '#FBBF24' : '#34D399', fontWeight: 600 }}>
+                    {isContract ? 'Contract' : 'Permanent'}
                   </span>
                 </div>
-                {u.employeeType === 'Contract' && (u.contractStartDate || u.contractDuration) && (
+                {isContract && (u.contractStartDate || u.contractDuration) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
                     <span style={{ color: 'var(--text-dim)' }}>Contract Period:</span>
                     <span style={{ color: '#FBBF24', fontSize: '0.78rem', fontWeight: 600 }}>
@@ -305,8 +427,9 @@ export const UserManagementPage = () => {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
       )}
 
       {/* Modal Trigger */}

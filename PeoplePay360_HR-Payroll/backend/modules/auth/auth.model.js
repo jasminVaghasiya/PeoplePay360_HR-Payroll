@@ -42,6 +42,11 @@ const userSchema = new mongoose.Schema(
       default: 'Team Member',
       trim: true
     },
+    salary: {
+      type: Number,
+      default: 50000,
+      min: [0, 'Salary cannot be negative']
+    },
     employeeType: {
       type: String,
       enum: ['Permanent', 'Contract'],
@@ -84,6 +89,10 @@ const userSchema = new mongoose.Schema(
 // Hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
+  // Prevent double-hashing if password is already a bcrypt hash
+  if (typeof this.password === 'string' && (this.password.startsWith('$2a$') || this.password.startsWith('$2b$'))) {
+    return next();
+  }
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);

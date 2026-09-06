@@ -27,14 +27,13 @@ import {
   Settings
 } from 'lucide-react';
 import { AttendanceFormModal } from './AttendanceFormModal';
-import { AttendanceCorrectionModal } from './AttendanceCorrectionModal';
 import { AttendanceDetailModal } from './AttendanceDetailModal';
 import { AttendanceSettingsModal } from './AttendanceSettingsModal';
 import { DailyAttendanceOverviewModal } from './DailyAttendanceOverviewModal';
 
 export const AttendanceModule = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('my'); // 'my' | 'records' | 'corrections' | 'summary' | 'calendar'
+  const [activeTab, setActiveTab] = useState('my'); // 'my' | 'records' | 'summary' | 'calendar'
 
   // Data States
   const [attendances, setAttendances] = useState([]);
@@ -56,16 +55,53 @@ export const AttendanceModule = () => {
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [selectedRecordForEdit, setSelectedRecordForEdit] = useState(null);
 
-  const [correctionModalOpen, setCorrectionModalOpen] = useState(false);
-  const [selectedRecordForCorrection, setSelectedRecordForCorrection] = useState(null);
-
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRecordForDetail, setSelectedRecordForDetail] = useState(null);
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(null);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState('2026-09-05');
+  const [calendarYear, setCalendarYear] = useState(2026);
+  const [calendarMonth, setCalendarMonth] = useState(8); // 8 is September (0-indexed)
   const [dailyOverviewModalOpen, setDailyOverviewModalOpen] = useState(false);
+
+  const CALENDAR_MONTHS = [
+    { value: 0, label: 'January' },
+    { value: 1, label: 'February' },
+    { value: 2, label: 'March' },
+    { value: 3, label: 'April' },
+    { value: 4, label: 'May' },
+    { value: 5, label: 'June' },
+    { value: 6, label: 'July' },
+    { value: 7, label: 'August' },
+    { value: 8, label: 'September' },
+    { value: 9, label: 'October' },
+    { value: 10, label: 'November' },
+    { value: 11, label: 'December' }
+  ];
+
+  const CALENDAR_YEARS = [2022, 2023, 2024, 2025, 2026, 2027, 2028, 2029, 2030].map((y) => ({
+    value: y,
+    label: String(y)
+  }));
+
+  const handlePrevMonth = () => {
+    if (calendarMonth === 0) {
+      setCalendarMonth(11);
+      setCalendarYear((y) => y - 1);
+    } else {
+      setCalendarMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (calendarMonth === 11) {
+      setCalendarMonth(0);
+      setCalendarYear((y) => y + 1);
+    } else {
+      setCalendarMonth((m) => m + 1);
+    }
+  };
 
   // Live Digital Clock State
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -74,7 +110,7 @@ export const AttendanceModule = () => {
   const isHr = isAuthorized;
 
   useEffect(() => {
-    if (!isAuthorized && ['records', 'corrections', 'summary'].includes(activeTab)) {
+    if (!isAuthorized && ['records', 'summary'].includes(activeTab)) {
       setActiveTab('my');
     }
   }, [isAuthorized, activeTab]);
@@ -196,45 +232,6 @@ export const AttendanceModule = () => {
     }
   };
 
-  // Action: Request Correction
-  const handleRequestCorrection = async (id, data) => {
-    try {
-      const res = await api.post(`/attendance/${id}/correction`, data);
-      if (res.data.success) {
-        await loadAllData();
-        return { success: true };
-      }
-    } catch (err) {
-      return { success: false, message: err.response?.data?.message || 'Request failed' };
-    }
-  };
-
-  // Action: Approve Correction
-  const handleApproveCorrection = async (id, data) => {
-    try {
-      const res = await api.post(`/attendance/corrections/${id}/approve`, data);
-      if (res.data.success) {
-        await loadAllData();
-        return { success: true };
-      }
-    } catch (err) {
-      return { success: false, message: err.response?.data?.message || 'Approval failed' };
-    }
-  };
-
-  // Action: Reject Correction
-  const handleRejectCorrection = async (id, data) => {
-    try {
-      const res = await api.post(`/attendance/corrections/${id}/reject`, data);
-      if (res.data.success) {
-        await loadAllData();
-        return { success: true };
-      }
-    } catch (err) {
-      return { success: false, message: err.response?.data?.message || 'Rejection failed' };
-    }
-  };
-
   const getStatusBadge = (status) => {
     const map = {
       'Present': { class: 'active', color: '#10B981', label: 'Present' },
@@ -255,11 +252,6 @@ export const AttendanceModule = () => {
       </span>
     );
   };
-
-  // Corrections list filtering
-  const correctionRequests = attendances.filter(
-    (a) => ['Requested', 'Approved', 'Refused'].includes(a.correctionStatus)
-  );
 
   const formatElapsedTime = (checkInIso) => {
     if (!checkInIso) return '00h 00m 00s';
@@ -282,7 +274,7 @@ export const AttendanceModule = () => {
   };
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="responsive-page-container">
       {/* Module Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
@@ -291,12 +283,12 @@ export const AttendanceModule = () => {
             Attendance & Schedule Operations
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.2rem' }}>
-            Real-time Check-In/Out kiosk, Worked Hours calculation, Late detection, and HR Correction Workflow.
+            Real-time Check-In/Out kiosk, Worked Hours calculation, and Late detection.
           </p>
         </div>
 
         {isHr && (
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               onClick={() => setSettingsModalOpen(true)}
               className="btn-secondary"
@@ -321,7 +313,7 @@ export const AttendanceModule = () => {
       </div>
 
       {/* Sub Navigation Bar Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
+      <div className="scrollable-subtabs" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.5rem', overflowX: 'auto' }}>
         <button
           onClick={() => setActiveTab('my')}
           className={`sidebar-link ${activeTab === 'my' ? 'active' : ''}`}
@@ -340,15 +332,6 @@ export const AttendanceModule = () => {
             >
               <FileText size={18} />
               <span>Attendance Records</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('corrections')}
-              className={`sidebar-link ${activeTab === 'corrections' ? 'active' : ''}`}
-              style={{ width: 'auto', padding: '0.6rem 1.2rem', borderRadius: '8px', fontSize: '0.9rem' }}
-            >
-              <AlertCircle size={18} />
-              <span>Attendance Corrections ({correctionRequests.length})</span>
             </button>
 
             <button
@@ -554,7 +537,7 @@ export const AttendanceModule = () => {
       {activeTab === 'records' && (
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           {/* Filters Control Bar */}
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="toolbar-flex-wrap" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ position: 'relative', minWidth: '260px', flex: 1 }}>
               <Search size={18} style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
               <input
@@ -719,81 +702,7 @@ export const AttendanceModule = () => {
         </div>
       )}
 
-      {/* TAB 3: ATTENDANCE CORRECTIONS WORKFLOW */}
-      {activeTab === 'corrections' && (
-        <div className="glass-panel" style={{ padding: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.2rem', color: '#fff', marginBottom: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertCircle color="#FBBF24" size={22} />
-            Attendance Corrections Review Dashboard
-          </h3>
-
-          {correctionRequests.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No attendance correction requests filed yet.
-            </div>
-          ) : (
-            <div className="data-table-container">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Date</th>
-                    <th>Current Status</th>
-                    <th>Correction Request</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {correctionRequests.map((req) => (
-                    <tr key={req._id || req.id}>
-                      <td>
-                        <div style={{ fontWeight: 600, color: '#fff' }}>{req.employeeName}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{req.employeeEmail}</div>
-                      </td>
-                      <td>{req.date}</td>
-                      <td>{getStatusBadge(req.status)}</td>
-                      <td style={{ fontSize: '0.85rem' }}>
-                        <div>In: {req.correctedCheckIn ? new Date(req.correctedCheckIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}</div>
-                        <div>Out: {req.correctedCheckOut ? new Date(req.correctedCheckOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unchanged'}</div>
-                      </td>
-                      <td style={{ fontSize: '0.82rem', color: '#E5E7EB', fontStyle: 'italic', maxWidth: '240px' }}>
-                        &quot;{req.correctionReason}&quot;
-                      </td>
-                      <td>
-                        <span className={`role-badge ${req.correctionStatus === 'Approved' ? 'admin' : req.correctionStatus === 'Refused' ? 'employee' : 'hr-manager'}`}>
-                          {req.correctionStatus}
-                        </span>
-                      </td>
-                      <td>
-                        {isHr && req.correctionStatus === 'Requested' ? (
-                          <button
-                            onClick={() => {
-                              setSelectedRecordForCorrection(req);
-                              setCorrectionModalOpen(true);
-                            }}
-                            className="btn-primary"
-                            style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-                          >
-                            Review Request
-                          </button>
-                        ) : (
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                            {req.correctedBy ? `Reviewed by ${req.correctedBy}` : 'Finalized'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 4: ATTENDANCE SUMMARY METRICS */}
+      {/* TAB 3: ATTENDANCE SUMMARY METRICS */}
       {activeTab === 'summary' && summary && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.2rem', marginBottom: '2rem' }}>
@@ -846,13 +755,31 @@ export const AttendanceModule = () => {
 
       {/* TAB 5: ATTENDANCE CALENDAR VIEW */}
       {activeTab === 'calendar' && (() => {
-        const activeDate = selectedCalendarDate || '2026-09-05';
-        const activeDayRecords = attendances.filter((a) => a.date === activeDate);
+        const monthNumStr = String(calendarMonth + 1).padStart(2, '0');
+        let activeDate = selectedCalendarDate;
+        if (!activeDate || !activeDate.startsWith(`${calendarYear}-${monthNumStr}`)) {
+          if (calendarYear === 2026 && calendarMonth === 8) {
+            activeDate = '2026-09-05';
+          } else {
+            activeDate = `${calendarYear}-${monthNumStr}-01`;
+          }
+        }
+
+        const activeDayRecords = attendances.filter((a) => {
+          if (!a.date) return false;
+          const dStr = typeof a.date === 'string' ? a.date.split('T')[0] : '';
+          return dStr === activeDate;
+        });
         const dayPresent = activeDayRecords.filter((r) => r.status === 'Present').length;
         const dayLate = activeDayRecords.filter((r) => r.status === 'Late').length;
         const dayAbsent = activeDayRecords.filter((r) => r.status === 'Absent').length;
         const dayOvertime = activeDayRecords.filter((r) => r.status === 'Overtime' || r.status === 'Half Day').length;
         const dayWorkedHours = parseFloat(activeDayRecords.reduce((acc, r) => acc + (r.workedHours || 0), 0).toFixed(2));
+
+        const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+        const firstDayObj = new Date(`${calendarYear}-${monthNumStr}-01T00:00:00`);
+        const leadingEmptyCount = (firstDayObj.getDay() + 6) % 7;
+        const currentMonthName = CALENDAR_MONTHS[calendarMonth]?.label || 'Month';
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -913,9 +840,95 @@ export const AttendanceModule = () => {
 
             {/* Monthly Calendar Grid */}
             <div className="glass-panel" style={{ padding: '1.5rem' }}>
-              <h3 style={{ fontSize: '1.2rem', color: '#fff', marginBottom: '1.2rem' }}>
-                September 2026 Monthly Attendance Calendar
-              </h3>
+              {/* Header with Title and Month/Year Dropdown Controls */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    background: 'rgba(124, 58, 237, 0.2)',
+                    border: '1px solid rgba(124, 58, 237, 0.45)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#C084FC'
+                  }}>
+                    <Calendar size={22} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+                      {currentMonthName} {calendarYear} Monthly Attendance Calendar
+                    </h3>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {daysInMonth} Days • Click any date to view breakdown and logs
+                    </span>
+                  </div>
+                </div>
+
+                {/* Month and Year Selectors */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="icon-btn"
+                    title="Previous Month"
+                    style={{ width: '38px', height: '38px', borderRadius: '8px' }}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+
+                  <div style={{ minWidth: '145px' }}>
+                    <CustomDropdown
+                      options={CALENDAR_MONTHS}
+                      value={calendarMonth}
+                      onChange={(val) => {
+                        const newM = Number(val);
+                        setCalendarMonth(newM);
+                        setSelectedCalendarDate(`${calendarYear}-${String(newM + 1).padStart(2, '0')}-01`);
+                      }}
+                      placeholder="Select Month"
+                    />
+                  </div>
+
+                  <div style={{ minWidth: '110px' }}>
+                    <CustomDropdown
+                      options={CALENDAR_YEARS}
+                      value={calendarYear}
+                      onChange={(val) => {
+                        const newY = Number(val);
+                        setCalendarYear(newY);
+                        setSelectedCalendarDate(`${newY}-${String(calendarMonth + 1).padStart(2, '0')}-01`);
+                      }}
+                      placeholder="Select Year"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="icon-btn"
+                    title="Next Month"
+                    style={{ width: '38px', height: '38px', borderRadius: '8px' }}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCalendarYear(2026);
+                      setCalendarMonth(8);
+                      setSelectedCalendarDate('2026-09-05');
+                    }}
+                    className="btn-secondary"
+                    style={{ padding: '0.45rem 0.85rem', fontSize: '0.82rem', height: '38px' }}
+                    title="Jump to September 2026"
+                  >
+                    Current (Sep 2026)
+                  </button>
+                </div>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center' }}>
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
@@ -924,14 +937,14 @@ export const AttendanceModule = () => {
                   </div>
                 ))}
 
-                {/* Leading Empty Cells for Grid Alignment (Sept 1 2026 starts on Tue) */}
-                {Array.from({ length: (new Date('2026-09-01T00:00:00').getDay() + 6) % 7 }).map((_, idx) => (
+                {/* Leading Empty Cells for Grid Alignment */}
+                {Array.from({ length: leadingEmptyCount }).map((_, idx) => (
                   <div key={`empty-${idx}`} style={{ minHeight: '92px', opacity: 0.12, border: '1px dashed rgba(255,255,255,0.05)', borderRadius: '8px' }} />
                 ))}
 
-                {Array.from({ length: 30 }, (_, i) => {
+                {Array.from({ length: daysInMonth }, (_, i) => {
                   const dayNum = i + 1;
-                  const dateStr = `2026-09-${String(dayNum).padStart(2, '0')}`;
+                  const dateStr = `${calendarYear}-${monthNumStr}-${String(dayNum).padStart(2, '0')}`;
                   const dateObj = new Date(`${dateStr}T00:00:00`);
                   const dayOfWeek = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
@@ -1082,16 +1095,6 @@ export const AttendanceModule = () => {
         employees={employees}
       />
 
-      <AttendanceCorrectionModal
-        isOpen={correctionModalOpen}
-        onClose={() => setCorrectionModalOpen(false)}
-        record={selectedRecordForCorrection}
-        onSubmitRequest={handleRequestCorrection}
-        onApprove={handleApproveCorrection}
-        onReject={handleRejectCorrection}
-        isHr={isHr}
-      />
-
       <AttendanceDetailModal
         isOpen={detailModalOpen}
         onClose={() => setDetailModalOpen(false)}
@@ -1110,6 +1113,7 @@ export const AttendanceModule = () => {
         selectedDate={selectedCalendarDate}
         allAttendances={attendances}
         allEmployees={employees}
+        attendanceConfig={attendanceConfig}
         onSelectEmployee={(empItem) => {
           if (empItem.employeeId || empItem.employeeEmail) {
             setSearch(empItem.employeeName || empItem.employeeEmail);

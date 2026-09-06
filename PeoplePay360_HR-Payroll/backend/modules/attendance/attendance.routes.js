@@ -17,7 +17,7 @@ router.get('/summary', attendanceController.getSummary);
 router.get('/settings', attendanceController.getConfig);
 router.put(
   '/settings',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User'),
   attendanceController.updateConfig
 );
 
@@ -31,31 +31,31 @@ router.post('/:id/correction', attendanceController.requestCorrection);
 // 5. HR & Admin Specific Management Endpoints
 router.post(
   '/',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HOD', 'Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User', 'HOD', 'Manager'),
   attendanceController.createAttendance
 );
 
 router.put(
   '/:id',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HOD', 'Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User', 'HOD', 'Manager'),
   attendanceController.updateAttendance
 );
 
 router.delete(
   '/:id',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HOD', 'Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User', 'HOD', 'Manager'),
   attendanceController.deleteAttendance
 );
 
 router.post(
   '/corrections/:id/approve',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HOD', 'Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User', 'HOD', 'Manager'),
   attendanceController.approveCorrection
 );
 
 router.post(
   '/corrections/:id/reject',
-  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HOD', 'Manager'),
+  authorizeRoles('Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User', 'HOD', 'Manager'),
   attendanceController.rejectCorrection
 );
 

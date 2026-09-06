@@ -51,8 +51,6 @@ const salaryStructureSchema = new mongoose.Schema(
   }
 );
 
-salaryStructureSchema.index({ code: 1 });
-
 const SalaryStructure = mongoose.model('SalaryStructure', salaryStructureSchema);
 
 module.exports = { SalaryStructure };

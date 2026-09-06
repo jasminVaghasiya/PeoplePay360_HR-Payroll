@@ -1,81 +1,11 @@
 const { User, RefreshToken, AccessToken } = require('./auth.model');
 const { getIsConnected } = require('../../config/db');
+const mongoose = require('mongoose');
 
-const bcrypt = require('bcryptjs');
-
-// In-Memory Backup Store for offline fallback
-let memoryUsers = [
-  {
-    _id: 'user_admin_001',
-    id: 'user_admin_001',
-    name: 'jemin vaghasiya',
-    email: 'jaiminvaghasiya9023@gmail.com',
-    password: bcrypt.hashSync('admin123', 10),
-    role: 'Admin',
-    department: 'Executive Management',
-    jobPosition: 'Chief System Administrator',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'System Bootstrapper',
-    createdAt: new Date().toISOString()
-  },
-  {
-    _id: 'user_emp_001',
-    id: 'user_emp_001',
-    name: 'Sarah Jenkins',
-    email: 'employee@peoplepay360.com',
-    password: bcrypt.hashSync('emp123', 10),
-    role: 'Employee',
-    department: 'Engineering',
-    jobPosition: 'Senior Full Stack Engineer',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'HR Operations',
-    createdAt: new Date().toISOString()
-  },
-  {
-    _id: 'user_emp_002',
-    id: 'user_emp_002',
-    name: 'Alex Morgan',
-    email: 'alex@peoplepay360.com',
-    password: bcrypt.hashSync('emp123', 10),
-    role: 'Employee',
-    department: 'Marketing',
-    jobPosition: 'Product Marketing Lead',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'HR Operations',
-    createdAt: new Date().toISOString()
-  },
-  {
-    _id: 'user_emp_003',
-    id: 'user_emp_003',
-    name: 'Elena Rostova',
-    email: 'hrmanager@peoplepay360.com',
-    password: bcrypt.hashSync('hr123', 10),
-    role: 'HR Manager',
-    department: 'Human Resources',
-    jobPosition: 'Principal HR Business Partner',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'Admin',
-    createdAt: new Date().toISOString()
-  },
-  {
-    _id: 'user_emp_004',
-    id: 'user_emp_004',
-    name: 'David Chen',
-    email: 'payroll@peoplepay360.com',
-    password: bcrypt.hashSync('payroll123', 10),
-    role: 'HR Payroll Manager',
-    department: 'Finance & Payroll',
-    jobPosition: 'Payroll Operations Director',
-    status: 'ACTIVE',
-    photo: '',
-    createdByName: 'Admin',
-    createdAt: new Date().toISOString()
-  }
-];
+// In-Memory Backup Store for runtime cache / offline fallback
+let memoryUsers = [];
+let memoryRefreshTokens = [];
+let memoryAccessTokens = [];
 
 class AuthRepository {
   async findByEmail(email) {
@@ -89,59 +19,111 @@ class AuthRepository {
 
   async findById(id) {
     if (getIsConnected()) {
-      const user = await User.findById(id).select('-password');
-      if (user) return user;
+      try {
+        let user = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          user = await User.findById(id).select('-password');
+        }
+        if (!user) {
+          user = await User.findOne({ $or: [{ _id: id }, { id: id }, { email: String(id).toLowerCase() }] }).select('-password');
+        }
+        if (user) return user;
+      } catch (e) {
+        // Safe fallback to memory store
+      }
     }
-    return memoryUsers.find((u) => u._id === id || u.id === id) || null;
+    return memoryUsers.find((u) => u._id === id || u.id === id || (u.email && u.email.toLowerCase() === String(id).toLowerCase())) || null;
   }
 
   async findAll({ search, role, status, employeeType }) {
+    let list = [];
+
     if (getIsConnected()) {
+      // 1. Auto-heal any misclassified employee records in MongoDB
+      try {
+        await User.updateMany(
+          {
+            role: { $in: ['Admin', 'HR Payroll Manager', 'HR Manager', 'HR Payroll User'] },
+            employeeType: { $ne: 'Permanent' }
+          },
+          { $set: { employeeType: 'Permanent', contractStartDate: '', contractEndDate: '', contractDuration: '' } }
+        );
+        const permanentCorporateEmails = [
+          'rohit.verma@peoplepay360.com',
+          'vikram.singh@peoplepay360.com',
+          'rajesh.nair@peoplepay360.com',
+          'sneha.reddy@peoplepay360.com',
+          'alok.joshi@peoplepay360.com'
+        ];
+        await User.updateMany(
+          { email: { $in: permanentCorporateEmails } },
+          { $set: { employeeType: 'Permanent', contractStartDate: '', contractEndDate: '', contractDuration: '' } }
+        );
+      } catch (e) {
+        // silent safe fallback
+      }
+
       let query = {};
-      if (role) query.role = role;
-      if (status) query.status = status;
-      if (employeeType) query.employeeType = employeeType;
-      if (search) {
+      if (role && role.trim()) query.role = role.trim();
+      if (status && status.trim()) query.status = status.trim();
+
+      if (search && search.trim()) {
+        const s = search.trim();
         query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { department: { $regex: search, $options: 'i' } }
+          { name: { $regex: s, $options: 'i' } },
+          { email: { $regex: s, $options: 'i' } },
+          { department: { $regex: s, $options: 'i' } }
         ];
       }
-      return await User.find(query).select('-password').sort({ createdAt: -1 });
+
+      const rawUsers = await User.find(query).select('-password').sort({ createdAt: -1 });
+      list = rawUsers.map((u) => (u.toObject ? u.toObject() : u));
+    } else {
+      // Memory Store query
+      list = [...memoryUsers];
+      if (role && role.trim()) list = list.filter((u) => u.role === role.trim());
+      if (status && status.trim()) list = list.filter((u) => u.status === status.trim());
+      if (search && search.trim()) {
+        const q = search.trim().toLowerCase();
+        list = list.filter(
+          (u) =>
+            u.name.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q) ||
+            (u.department && u.department.toLowerCase().includes(q))
+        );
+      }
     }
 
-    // Memory Store query
-    let list = memoryUsers.map((u) => ({
-      id: u._id || u.id,
-      _id: u._id || u.id,
-      name: u.name,
-      email: u.email,
-      role: u.role,
-      department: u.department,
-      jobPosition: u.jobPosition,
-      employeeType: u.employeeType || 'Permanent',
-      contractStartDate: u.contractStartDate || '',
-      contractEndDate: u.contractEndDate || '',
-      contractDuration: u.contractDuration || (u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : ''),
-      status: u.status,
-      createdByName: u.createdByName,
-      createdAt: u.createdAt
-    }));
+    // Resolve employeeType accurately across both DB and in-memory stores
+    const resolvedUsers = list.map((u) => {
+      const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+        Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+      return {
+        id: u._id || u.id,
+        _id: u._id || u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        department: u.department,
+        jobPosition: u.jobPosition,
+        salary: u.salary || 50000,
+        employeeType: isContract ? 'Contract' : 'Permanent',
+        contractStartDate: isContract ? (u.contractStartDate || '') : '',
+        contractEndDate: isContract ? (u.contractEndDate || '') : '',
+        contractDuration: isContract ? (u.contractDuration || '') : '',
+        status: u.status,
+        photo: u.photo || '',
+        createdByName: u.createdByName,
+        createdAt: u.createdAt
+      };
+    });
 
-    if (role) list = list.filter((u) => u.role === role);
-    if (status) list = list.filter((u) => u.status === status);
-    if (employeeType) list = list.filter((u) => u.employeeType === employeeType);
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (u) =>
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          u.department.toLowerCase().includes(q)
-      );
+    if (employeeType && employeeType.trim()) {
+      const cleanFilter = employeeType.trim().toLowerCase();
+      return resolvedUsers.filter((u) => (u.employeeType || 'Permanent').toLowerCase() === cleanFilter);
     }
-    return list;
+
+    return resolvedUsers;
   }
 
   async create(userData) {
@@ -157,6 +139,7 @@ class AuthRepository {
         role: createdDbUser.role,
         department: createdDbUser.department,
         jobPosition: createdDbUser.jobPosition,
+        salary: createdDbUser.salary !== undefined ? createdDbUser.salary : (userData.salary || 50000),
         employeeType: createdDbUser.employeeType,
         contractStartDate: createdDbUser.contractStartDate,
         contractEndDate: createdDbUser.contractEndDate,
@@ -178,6 +161,7 @@ class AuthRepository {
       role: userData.role,
       department: userData.department || 'General',
       jobPosition: userData.jobPosition || 'Employee',
+      salary: userData.salary !== undefined ? userData.salary : 50000,
       employeeType: userData.employeeType || 'Permanent',
       contractStartDate: userData.contractStartDate || '',
       contractEndDate: userData.contractEndDate || '',
@@ -232,38 +216,166 @@ class AuthRepository {
     return updatedUser;
   }
 
-  // --- REFRESH TOKEN OPERATIONS (PURE DATABASE) ---
+  async updateUser(id, updateData) {
+    let updatedUser = null;
+    if (getIsConnected()) {
+      updatedUser = await User.findByIdAndUpdate(id, { $set: updateData }, { new: true }).select('-password');
+    }
+
+    const memUser = memoryUsers.find((u) => u._id === id || u.id === id);
+    if (memUser) {
+      Object.assign(memUser, updateData);
+      if (!updatedUser) updatedUser = memUser;
+    }
+
+    return updatedUser;
+  }
+
+  async deleteById(id) {
+    let deletedUser = null;
+    if (getIsConnected()) {
+      try {
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          deletedUser = await User.findByIdAndDelete(id).select('-password');
+        }
+        if (!deletedUser) {
+          deletedUser = await User.findOneAndDelete({ $or: [{ _id: id }, { id: id }, { email: String(id).toLowerCase() }] }).select('-password');
+        }
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+    const idx = memoryUsers.findIndex((u) => u._id === id || u.id === id || (u.email && u.email.toLowerCase() === String(id).toLowerCase()));
+    if (idx !== -1) {
+      const removed = memoryUsers.splice(idx, 1)[0];
+      if (!deletedUser) deletedUser = removed;
+    }
+    return deletedUser;
+  }
+
+  // --- REFRESH TOKEN OPERATIONS (RESILIENT DUAL STORE) ---
   async saveRefreshToken(tokenData) {
-    return await RefreshToken.create(tokenData);
+    if (getIsConnected()) {
+      try {
+        const uId = tokenData.userId;
+        const validId = mongoose.Types.ObjectId.isValid(uId) ? new mongoose.Types.ObjectId(uId) : undefined;
+        return await RefreshToken.create({
+          ...tokenData,
+          userId: validId || new mongoose.Types.ObjectId()
+        });
+      } catch (e) {
+        // Fallback to memory store below
+      }
+    }
+    const memToken = { ...tokenData, createdAt: new Date(), revoked: false };
+    memoryRefreshTokens.push(memToken);
+    return memToken;
   }
 
   async findRefreshToken(token) {
-    return await RefreshToken.findOne({ token });
+    if (getIsConnected()) {
+      try {
+        const found = await RefreshToken.findOne({ token });
+        if (found) return found;
+      } catch (e) {
+        // Fallback to memory
+      }
+    }
+    return memoryRefreshTokens.find((t) => t.token === token) || null;
   }
 
   async revokeRefreshToken(token, replacedByToken = null) {
-    return await RefreshToken.updateOne({ token }, { revoked: true, replacedByToken, rotatedAt: new Date() });
+    const rotatedAt = new Date();
+    if (getIsConnected()) {
+      try {
+        await RefreshToken.updateOne({ token }, { revoked: true, replacedByToken, rotatedAt });
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const mem = memoryRefreshTokens.find((t) => t.token === token);
+    if (mem) {
+      mem.revoked = true;
+      mem.replacedByToken = replacedByToken;
+      mem.rotatedAt = rotatedAt;
+    }
+    return true;
   }
 
   async revokeAllUserRefreshTokens(userId) {
-    return await RefreshToken.updateMany({ userId }, { revoked: true });
+    if (getIsConnected()) {
+      try {
+        await RefreshToken.updateMany({ userId }, { revoked: true });
+      } catch (e) {
+        // Fallback
+      }
+    }
+    memoryRefreshTokens.forEach((t) => {
+      if (String(t.userId) === String(userId)) {
+        t.revoked = true;
+      }
+    });
+    return true;
   }
 
-  // --- ACCESS TOKEN OPERATIONS (PURE DATABASE) ---
+  // --- ACCESS TOKEN OPERATIONS (RESILIENT DUAL STORE) ---
   async saveAccessToken(tokenData) {
-    return await AccessToken.create(tokenData);
+    if (getIsConnected()) {
+      try {
+        const uId = tokenData.userId;
+        const validId = mongoose.Types.ObjectId.isValid(uId) ? new mongoose.Types.ObjectId(uId) : undefined;
+        return await AccessToken.create({
+          ...tokenData,
+          userId: validId || new mongoose.Types.ObjectId()
+        });
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const memToken = { ...tokenData, createdAt: new Date(), revoked: false };
+    memoryAccessTokens.push(memToken);
+    return memToken;
   }
 
   async findAccessToken(token) {
-    return await AccessToken.findOne({ token });
+    if (getIsConnected()) {
+      try {
+        const found = await AccessToken.findOne({ token });
+        if (found) return found;
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return memoryAccessTokens.find((t) => t.token === token) || null;
   }
 
   async revokeAccessToken(token) {
-    return await AccessToken.updateOne({ token }, { revoked: true });
+    if (getIsConnected()) {
+      try {
+        await AccessToken.updateOne({ token }, { revoked: true });
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const mem = memoryAccessTokens.find((t) => t.token === token);
+    if (mem) mem.revoked = true;
+    return true;
   }
 
   async revokeAllUserAccessTokens(userId) {
-    return await AccessToken.updateMany({ userId }, { revoked: true });
+    if (getIsConnected()) {
+      try {
+        await AccessToken.updateMany({ userId }, { revoked: true });
+      } catch (e) {
+        // Fallback
+      }
+    }
+    memoryAccessTokens.forEach((t) => {
+      if (String(t.userId) === String(userId)) {
+        t.revoked = true;
+      }
+    });
+    return true;
   }
 }
 

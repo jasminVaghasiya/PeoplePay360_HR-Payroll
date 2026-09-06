@@ -340,9 +340,20 @@ export const PayslipDetailView = ({ payslip, onBack, settings }) => {
             onClick={handlePrint}
             className="btn-primary"
             style={{ padding: '0.55rem 1.3rem', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            title="Download PDF Voucher"
+          >
+            <Download size={16} />
+            <span>Download PDF</span>
+          </button>
+
+          <button
+            onClick={handlePrint}
+            className="btn-secondary"
+            style={{ padding: '0.55rem 1rem', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            title="Print Physical Copy"
           >
             <Printer size={16} />
-            <span>Print / Save PDF</span>
+            <span>Print</span>
           </button>
         </div>
       </div>

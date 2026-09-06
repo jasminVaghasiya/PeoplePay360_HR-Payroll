@@ -40,7 +40,8 @@ export const RequestDetailModal = ({ isOpen, onClose, request, onActionSuccess }
 
   const canApprove = ['Admin', 'HR Payroll Manager', 'HR Manager'].includes(user?.role);
   const isOwner = (request.employee?._id || request.employee) === (user?._id || user?.id);
-  const canCancel = request.status !== 'Cancelled' && (isOwner || canApprove);
+  // Terminal states (Approved, Refused, Cancelled) cannot be modified or cancelled
+  const canCancel = (request.status === 'Pending' || request.status === 'Draft') && (isOwner || canApprove);
 
   const handleApprove = async () => {
     setLoading(true);
@@ -328,7 +329,7 @@ export const RequestDetailModal = ({ isOpen, onClose, request, onActionSuccess }
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
             <button type="button" onClick={onClose} className="btn-secondary" disabled={loading}>
               Close
             </button>
@@ -340,16 +341,20 @@ export const RequestDetailModal = ({ isOpen, onClose, request, onActionSuccess }
                   onClick={() => setShowRefusalPrompt(true)}
                   className="btn-danger"
                   disabled={loading}
+                  title="Refuse this leave request"
                 >
-                  <XCircle size={16} /> Refuse
+                  <XCircle size={16} />
+                  <span>Refuse</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleApprove}
                   className="btn-primary"
                   disabled={loading}
+                  title="Approve this leave request"
                 >
-                  <CheckCircle2 size={16} /> Approve Leave
+                  <CheckCircle2 size={16} />
+                  <span>Approve Leave</span>
                 </button>
               </>
             )}

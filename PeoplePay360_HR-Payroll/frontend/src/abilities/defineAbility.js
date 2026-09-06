@@ -10,11 +10,12 @@ export const defineAbilityFor = (user) => {
   switch (user.role) {
     case 'Admin':
       can('manage', 'all');
-      cannot('read', 'employee');
       break;
 
     case 'HR Payroll Manager':
       can('manage', [
+        'user',
+        'employee',
         'contract',
         'schedule',
         'attendance',
@@ -23,13 +24,15 @@ export const defineAbilityFor = (user) => {
         'payslip',
         'salary_structure',
         'salary_rule',
-        'dashboard'
+        'dashboard',
+        'setting'
       ]);
-      can(['create', 'read', 'update'], 'user');
       break;
 
     case 'HR Payroll User':
       can('manage', [
+        'user',
+        'employee',
         'contract',
         'schedule',
         'attendance',
@@ -37,27 +40,37 @@ export const defineAbilityFor = (user) => {
         'dashboard'
       ]);
       can(['create', 'read', 'update'], ['payrun', 'payslip']);
+      cannot('delete', ['payrun', 'payslip']);
       can('read', ['salary_structure', 'salary_rule']);
+      cannot(['create', 'update', 'delete'], ['salary_structure', 'salary_rule']);
+      cannot(['manage', 'read', 'create', 'update', 'delete'], ['setting']);
       break;
 
     case 'HR Manager':
       can('manage', [
+        'user',
+        'employee',
         'contract',
         'schedule',
         'attendance',
         'timeoff',
         'dashboard'
       ]);
-      can(['create', 'read'], 'user');
+      can(['approve', 'refuse'], 'timeoff');
       cannot(
-        ['manage', 'read', 'create', 'update', 'delete'],
-        ['payrun', 'payslip', 'salary_structure', 'salary_rule']
+        ['manage', 'read', 'create', 'update', 'delete', 'compute', 'validate', 'pay'],
+        ['payroll', 'payrun', 'payslip', 'salary_structure', 'salary_rule', 'salary', 'setting']
       );
       break;
 
     case 'Employee':
-      can('read', ['schedule', 'payslip']);
+      can('read', ['schedule', 'payslip', 'salary_structure', 'salary_rule']);
       can(['create', 'read'], ['attendance', 'timeoff']);
+      cannot(['create', 'update', 'delete'], ['payslip', 'salary_structure', 'salary_rule']);
+      cannot(
+        ['manage', 'read', 'create', 'update', 'delete'],
+        ['user', 'contract', 'payrun', 'setting']
+      );
       break;
 
     default:

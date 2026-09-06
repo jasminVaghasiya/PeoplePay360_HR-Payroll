@@ -85,27 +85,48 @@ export const SalaryStructureDetailView = ({ structure, onBack, onSaveSuccess, is
 
     setSaving(true);
     setErrorMessage('');
-    try {
-      const payload = {
-        name,
-        code: structure?.code || (name.toUpperCase().replace(/\\s+/g, '_') + '_2026'),
-        description: structure?.description || `${name} structure with sequence-driven rules`,
-        active: active === 'True'
-      };
 
+    const cleanCode = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_' + Date.now().toString().slice(-4);
+    const payload = {
+      name: name.trim(),
+      code: structure?.code || cleanCode,
+      description: structure?.description || `${name} structure with sequence-driven rules`,
+      active: active === 'True'
+    };
+
+    const isMongoId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id) && id !== 'undefined' && id !== 'null';
+
+    try {
       let res;
-      if (structure?._id) {
-        res = await api.put(`/payroll/structures/${structure._id}`, payload);
+      if (structure?._id && isMongoId(structure._id)) {
+        try {
+          res = await api.put(`/payroll/structures/${structure._id}`, payload);
+        } catch (putErr) {
+          if (putErr.response?.status === 404) {
+            res = await api.post('/payroll/structures', payload);
+          } else {
+            throw putErr;
+          }
+        }
       } else {
         res = await api.post('/payroll/structures', payload);
       }
 
-      if (res.data.success) {
-        showToast(res.data.message || 'Salary Structure updated successfully.');
-        if (onSaveSuccess) onSaveSuccess();
+      if (res.data?.success) {
+        const savedStruct = res.data.structure || res.data.data;
+        const successMsg = res.data?.message || 'Salary Structure saved to database successfully!';
+        showToast(successMsg);
+        setTimeout(() => {
+          if (onSaveSuccess) onSaveSuccess(savedStruct);
+          else if (onBack) onBack();
+        }, 1000);
+      } else {
+        setErrorMessage(res.data?.message || 'Failed to save Salary Structure to database.');
       }
-    } catch (err) {
-      setErrorMessage(err.response?.data?.message || 'Failed to save salary structure');
+    } catch (apiErr) {
+      console.error('Error saving salary structure to database:', apiErr);
+      const msg = apiErr.response?.data?.error?.message || apiErr.response?.data?.message || apiErr.message || 'Failed to save Salary Structure to database';
+      setErrorMessage(msg);
     } finally {
       setSaving(false);
     }

@@ -23,7 +23,8 @@ const SUBJECTS = Object.freeze({
   PAYSLIP: "payslip",
   SALARY_STRUCTURE: "salary_structure",
   SALARY_RULE: "salary_rule",
-  DASHBOARD: "dashboard"
+  DASHBOARD: "dashboard",
+  SETTING: "setting"
 });
 
 const ACTIONS = Object.freeze({

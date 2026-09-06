@@ -20,13 +20,20 @@ const getEmployees = async (req, res) => {
       usersList = usersList.filter((u) => u.department === department);
     }
 
+    const resolveEmployeeType = (u) => {
+      const isContract = (u.employeeType || '').toLowerCase() === 'contract' &&
+        Boolean(u.contractStartDate || u.contractEndDate || u.contractDuration);
+      return isContract ? 'Contract' : 'Permanent';
+    };
+
     if (employeeType) {
-      usersList = usersList.filter((u) => u.employeeType === employeeType);
+      usersList = usersList.filter((u) => resolveEmployeeType(u) === employeeType);
     }
 
     // Map dynamic user records to Employee hub data
     const employees = usersList.map((u) => {
       const uId = (u._id || u.id || '').toString();
+      const empType = resolveEmployeeType(u);
       return {
         id: uId,
         _id: uId,
@@ -35,7 +42,8 @@ const getEmployees = async (req, res) => {
         role: u.role,
         department: u.department || 'General',
         jobPosition: u.jobPosition || 'Employee',
-        employeeType: u.employeeType || 'Permanent',
+        salary: u.salary || 50000,
+        employeeType: empType,
         contractStartDate: u.contractStartDate || '',
         contractEndDate: u.contractEndDate || '',
         contractDuration: u.contractDuration || (u.contractStartDate && u.contractEndDate ? `${u.contractStartDate} to ${u.contractEndDate}` : ''),

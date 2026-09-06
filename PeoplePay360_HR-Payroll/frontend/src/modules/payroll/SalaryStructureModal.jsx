@@ -56,28 +56,42 @@ export const SalaryStructureModal = ({ isOpen, onClose, onSuccess, editStructure
     setLoading(true);
     setError('');
 
-    try {
-      const payload = {
-        name,
-        code: code.toUpperCase(),
-        description,
-        ruleIds: selectedRuleIds,
-        isDefault
-      };
+    const cleanCode = (code || name).trim().toUpperCase().replace(/[^A-Z0-9]/g, '_') + '_' + Date.now().toString().slice(-4);
+    const payload = {
+      name: name.trim(),
+      code: editStructure?.code || cleanCode,
+      description,
+      ruleIds: selectedRuleIds,
+      isDefault
+    };
 
+    const isMongoId = (id) => typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id) && id !== 'undefined' && id !== 'null';
+
+    try {
       let res;
-      if (editStructure) {
-        res = await api.put(`/payroll/structures/${editStructure._id}`, payload);
+      if (editStructure?._id && isMongoId(editStructure._id)) {
+        try {
+          res = await api.put(`/payroll/structures/${editStructure._id}`, payload);
+        } catch (putErr) {
+          if (putErr.response?.status === 404) {
+            res = await api.post('/payroll/structures', payload);
+          } else {
+            throw putErr;
+          }
+        }
       } else {
         res = await api.post('/payroll/structures', payload);
       }
 
-      if (res.data.success) {
-        onSuccess(res.data.message || 'Salary Structure saved.');
+      if (res.data?.success) {
+        onSuccess(res.data.message || 'Salary Structure saved to database.');
         onClose();
+      } else {
+        setError(res.data?.message || 'Failed to save Salary Structure to database.');
       }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save salary structure');
+    } catch (apiErr) {
+      console.error('Error saving salary structure to database:', apiErr);
+      setError(apiErr.response?.data?.message || apiErr.message || 'Failed to save Salary Structure to database');
     } finally {
       setLoading(false);
     }

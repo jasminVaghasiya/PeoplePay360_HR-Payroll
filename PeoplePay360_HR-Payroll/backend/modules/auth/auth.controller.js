@@ -113,7 +113,7 @@ const getUsers = async (req, res) => {
 // Toggle User Active/Inactive Status Controller
 const toggleUserStatus = async (req, res) => {
   try {
-    const updatedUser = await authService.toggleUserStatus(req.params.id);
+    const updatedUser = await authService.toggleUserStatus(req.user, req.params.id);
     return res.status(200).json({
       success: true,
       message: `User status changed to ${updatedUser.status}`,
@@ -142,7 +142,7 @@ const updateUserRole = async (req, res) => {
     const updatedUser = await authService.updateUserRole(req.user, req.params.id, req.body.role);
     return res.status(200).json({
       success: true,
-      message: Role for '' updated to '' successfully,
+      message: `Role for '${updatedUser?.name || 'user'}' updated to '${updatedUser?.role}' successfully`,
       user: updatedUser
     });
   } catch (error) {
@@ -182,6 +182,38 @@ const getUserById = async (req, res) => {
   }
 };
 
+// Update Employee Details Controller (Admin, HR Payroll Manager, HR Manager)
+const updateUser = async (req, res) => {
+  try {
+    const updatedUser = await authService.updateUser(req.user, req.params.id, req.body);
+    return res.status(200).json({
+      success: true,
+      message: `Employee '${updatedUser.name}' details updated successfully`,
+      user: updatedUser
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to update employee details'
+    });
+  }
+};
+
+// Delete User Controller (Admin & HR Payroll Manager)
+const deleteUser = async (req, res) => {
+  try {
+    const result = await authService.deleteUser(req.user, req.params.id);
+    return res.status(200).json(result);
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to delete employee'
+    });
+  }
+};
+
 module.exports = {
   login,
   refreshToken,
@@ -189,7 +221,9 @@ module.exports = {
   createUser,
   getUsers,
   toggleUserStatus,
+  deleteUser,
   getMe,
   getUserById,
-  updateUserRole
+  updateUserRole,
+  updateUser
 };

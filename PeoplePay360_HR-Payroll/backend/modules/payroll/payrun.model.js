@@ -60,7 +60,7 @@ const payrunSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['New', 'Computed', 'Validated', 'Paid'],
+      enum: ['New', 'Computed', 'Validated', 'Paid', 'Closed'],
       default: 'New'
     },
     selectedEmployeeIds: [
